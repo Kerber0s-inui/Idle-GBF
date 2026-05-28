@@ -77,6 +77,10 @@ function makeLoadout(characters: Character[], weapons: Weapon[] = [testWeapon]):
   };
 }
 
+function firstChargeDamage(result: ReturnType<typeof simulateBattle>, actor: string) {
+  return result.turns.flatMap((turn) => turn.events).find((event) => event.actor === actor && event.kind === 'chargeAttack')?.damage;
+}
+
 describe('battle simulation', () => {
   it('resolves a first-clear battle with logs and charge attacks', () => {
     const result = simulateBattle({
@@ -219,6 +223,72 @@ describe('battle simulation', () => {
     expect(boosted.turns.length).toBeGreaterThan(baseline.turns.length);
   });
 
+  it('applies shared summon hp to survivability', () => {
+    const attacker = makeCharacter({ id: 'summon-hp-attacker', name: 'Summon HP Attacker', stats: { hp: 1_000, atk: 10, defense: 100 } });
+    const hpSummon: Summon = { ...testSummon, stats: { hp: 1_000, atk: 0, defense: 0 } };
+    const damagingEnemy = { ...testEnemy, normalAttackDamage: 1_200, stats: { ...testEnemy.stats, hp: 120_000 } };
+    const baseline = simulateBattle({
+      characters: [attacker],
+      weapons: [testWeapon],
+      summons: [testSummon],
+      enemy: damagingEnemy,
+      loadout: makeLoadout([attacker]),
+      random: () => 0.99
+    });
+    const boosted = simulateBattle({
+      characters: [attacker],
+      weapons: [testWeapon],
+      summons: [hpSummon],
+      enemy: damagingEnemy,
+      loadout: makeLoadout([attacker]),
+      random: () => 0.99
+    });
+
+    expect(baseline.outcome).toBe('loss');
+    expect(boosted.outcome).toBe('loss');
+    expect(boosted.turns.length).toBeGreaterThan(baseline.turns.length);
+  });
+
+  it('raises charge attack damage with charge damage modifiers', () => {
+    const attacker = makeCharacter({
+      id: 'charge-damage-attacker',
+      name: 'Charge Damage Attacker',
+      stats: { hp: 1_000, atk: 1_000, defense: 100 },
+      chargeAttack: { id: 'charge-damage-ca', name: 'Charge Damage', multiplier: 1, chargeCost: 70, cap: 100_000 }
+    });
+    const boostedAttacker = makeCharacter({
+      ...attacker,
+      passives: [
+        {
+          id: 'charge-damage-passive',
+          name: 'Charge Damage Passive',
+          description: '',
+          modifiers: [{ id: 'charge-damage-mod', label: 'Charge damage +100%', type: 'chargeDamage', value: 1, source: 'character' }]
+        },
+        { id: 'charge-damage-empty', name: 'Empty', description: '', modifiers: [] }
+      ]
+    });
+    const baseline = simulateBattle({
+      characters: [attacker],
+      weapons: [testWeapon],
+      summons: [testSummon],
+      enemy: testEnemy,
+      loadout: makeLoadout([attacker]),
+      random: () => 0.99
+    });
+    const boosted = simulateBattle({
+      characters: [boostedAttacker],
+      weapons: [testWeapon],
+      summons: [testSummon],
+      enemy: testEnemy,
+      loadout: makeLoadout([boostedAttacker]),
+      random: () => 0.99
+    });
+
+    expect(firstChargeDamage(baseline, attacker.name)).toBe(1_500);
+    expect(firstChargeDamage(boosted, boostedAttacker.name)).toBe(3_000);
+  });
+
   it('raises charge attack damage cap with charge cap modifiers', () => {
     const cappedAttacker = makeCharacter({
       id: 'capped-attacker',
@@ -261,5 +331,49 @@ describe('battle simulation', () => {
 
     expect(baselineDamage).toBe(1_000);
     expect(boostedDamage).toBe(2_000);
+  });
+
+  it('raises charge attack damage cap with damage cap modifiers', () => {
+    const cappedAttacker = makeCharacter({
+      id: 'damage-cap-attacker',
+      name: 'Damage Cap Attacker',
+      stats: { hp: 1_000, atk: 100_000, defense: 100 },
+      chargeAttack: { id: 'damage-cap-ca', name: 'Damage Cap Charge', multiplier: 10, chargeCost: 70, cap: 1_000 },
+      passives: [
+        {
+          id: 'damage-cap-passive',
+          name: 'Damage Cap Passive',
+          description: '',
+          modifiers: [{ id: 'damage-cap-mod', label: 'Damage cap +100%', type: 'damageCap', value: 1, source: 'character' }]
+        },
+        { id: 'damage-cap-empty', name: 'Empty', description: '', modifiers: [] }
+      ]
+    });
+    const baselineAttacker = makeCharacter({
+      ...cappedAttacker,
+      passives: [
+        { id: 'damage-cap-baseline-a', name: 'Empty A', description: '', modifiers: [] },
+        { id: 'damage-cap-baseline-b', name: 'Empty B', description: '', modifiers: [] }
+      ]
+    });
+    const baseline = simulateBattle({
+      characters: [baselineAttacker],
+      weapons: [testWeapon],
+      summons: [testSummon],
+      enemy: testEnemy,
+      loadout: makeLoadout([baselineAttacker]),
+      random: () => 0.99
+    });
+    const boosted = simulateBattle({
+      characters: [cappedAttacker],
+      weapons: [testWeapon],
+      summons: [testSummon],
+      enemy: testEnemy,
+      loadout: makeLoadout([cappedAttacker]),
+      random: () => 0.99
+    });
+
+    expect(firstChargeDamage(baseline, baselineAttacker.name)).toBe(1_000);
+    expect(firstChargeDamage(boosted, cappedAttacker.name)).toBe(2_000);
   });
 });
