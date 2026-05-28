@@ -72,8 +72,10 @@ export function settleSweepRun(input: {
   now: number;
   dropRateBonus: number;
   random: () => number;
-}): { completedRuns: number; rewards: RewardStack[] } {
-  const { completedRuns } = getSweepProgress({ run: input.run, now: input.now });
+}): { completedRuns: number; rewards: RewardStack[]; isComplete: boolean } {
+  const { completedRuns, isComplete } = getSweepProgress({ run: input.run, now: input.now });
+  if (!isComplete) return { completedRuns, rewards: [], isComplete };
+
   const rewards = rollRewards({
     quest: input.quest,
     runCount: completedRuns,
@@ -82,5 +84,5 @@ export function settleSweepRun(input: {
     random: input.random,
   });
 
-  return { completedRuns, rewards };
+  return { completedRuns, rewards, isComplete };
 }

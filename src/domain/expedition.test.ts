@@ -18,6 +18,23 @@ describe('expedition', () => {
     const settlement = settleSweepRun({ run, quest: initialQuests[0], now: run.endsAt, dropRateBonus: 0, random: () => 0 });
     expect(settlement.completedRuns).toBe(10);
     expect(settlement.rewards.length).toBeGreaterThan(0);
+    expect(settlement.isComplete).toBe(true);
+  });
+
+  it('does not grant rewards until the sweep run is complete', () => {
+    const run = createSweepRun({ quest: initialQuests[0], requestedRuns: 10, startedAt: 0, sweepEfficiency: 0 });
+
+    const settlement = settleSweepRun({
+      run,
+      quest: initialQuests[0],
+      now: initialQuests[0].runDurationMs * 5,
+      dropRateBonus: 0,
+      random: () => 0,
+    });
+
+    expect(settlement.completedRuns).toBe(5);
+    expect(settlement.isComplete).toBe(false);
+    expect(settlement.rewards).toEqual([]);
   });
 
   it('clamps invalid requested runs to one finite run', () => {

@@ -62,8 +62,8 @@ export function createInitialSave(now: number): SaveFile {
 }
 
 export function exportSave(save: SaveFile): string {
-  save.updatedAt = Date.now();
-  return JSON.stringify(SaveFileSchema.parse(save), null, 2);
+  const next = { ...save, updatedAt: Date.now() };
+  return JSON.stringify(SaveFileSchema.parse(next), null, 2);
 }
 
 export function importSave(json: string): SaveFile {
