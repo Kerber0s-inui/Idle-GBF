@@ -63,6 +63,19 @@ describe('game store', () => {
     expect(() => act(() => result.current.startSweep('quest-main-1', 1))).toThrow('副本未首通');
   });
 
+  it('throws instead of replacing an active sweep', () => {
+    const wrapper = ({ children }: { children: ReactNode }) => <GameProvider now={() => 1000}>{children}</GameProvider>;
+    const { result } = renderHook(() => useGame(), { wrapper });
+
+    act(() => result.current.markQuestCleared('quest-main-1'));
+    act(() => result.current.startSweep('quest-main-1', 2));
+    const activeRunId = result.current.save.activeRun?.id;
+
+    expect(() => act(() => result.current.startSweep('quest-main-1', 5))).toThrow('已有周回进行中');
+    expect(result.current.save.activeRun?.id).toBe(activeRunId);
+    expect(result.current.save.activeRun?.totalRuns).toBe(2);
+  });
+
   it('exports the current save without mutating state', () => {
     const times = [1000, 2000];
     const wrapper = ({ children }: { children: ReactNode }) => (
@@ -124,6 +137,46 @@ describe('game store', () => {
     expect(second).toEqual([]);
     expect(result.current.save.inventory.materials['ember-chip']).toBe(2);
     expect(result.current.save.activeRun).toBeNull();
+  });
+
+  it('clears an active sweep with an unknown quest id without granting rewards', () => {
+    const badSave = createInitialSave(1000);
+    badSave.activeRun = {
+      id: 'run-missing-quest',
+      questId: 'quest-missing',
+      startedAt: 1000,
+      endsAt: 1000 + 60_000,
+      totalRuns: 1,
+      runDurationMs: 60_000,
+    };
+    localStorage.setItem(storageKey, JSON.stringify(badSave));
+    const wrapper = ({ children }: { children: ReactNode }) => <GameProvider now={() => 2000}>{children}</GameProvider>;
+    const { result } = renderHook(() => useGame(), { wrapper });
+
+    let rewards: ReturnType<typeof result.current.settleActiveSweep> = [];
+    act(() => {
+      rewards = result.current.settleActiveSweep(2000);
+    });
+
+    expect(rewards).toEqual([]);
+    expect(result.current.save.activeRun).toBeNull();
+    expect(JSON.parse(localStorage.getItem(storageKey) ?? '{}').activeRun).toBeNull();
+  });
+
+  it('rejects invalid resource quantities', () => {
+    const wrapper = ({ children }: { children: ReactNode }) => <GameProvider now={() => 1000}>{children}</GameProvider>;
+    const { result } = renderHook(() => useGame(), { wrapper });
+
+    for (const quantity of [0, -1, 1.5, NaN, Infinity]) {
+      expect(() => act(() => result.current.addCurrency('crystal', quantity))).toThrow('资源数量无效');
+      expect(() => act(() => result.current.addMaterial('ember-chip', quantity))).toThrow('资源数量无效');
+    }
+
+    act(() => result.current.addCurrency('crystal', 2));
+    act(() => result.current.addMaterial('ember-chip', 3));
+
+    expect(result.current.save.inventory.currencies.crystal).toBe(2);
+    expect(result.current.save.inventory.materials['ember-chip']).toBe(3);
   });
 
   it('imports save JSON into state and localStorage', () => {

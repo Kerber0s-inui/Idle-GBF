@@ -51,6 +51,10 @@ function serializeSave(save: SaveFile): string {
   return JSON.stringify(SaveFileSchema.parse(save), null, 2);
 }
 
+function assertPositiveIntegerQuantity(quantity: number) {
+  if (!Number.isInteger(quantity) || quantity <= 0) throw new Error('资源数量无效');
+}
+
 function addRewardsToInventory(save: SaveFile, rewards: RewardStack[]): SaveFile {
   const currencies = { ...save.inventory.currencies };
   const materials = { ...save.inventory.materials };
@@ -123,6 +127,7 @@ export function GameProvider({ children, now = () => Date.now(), random = Math.r
 
         updateSave((current) => {
           if (!current.progress.clearedQuestIds.includes(questId)) throw new Error('副本未首通');
+          if (current.activeRun) throw new Error('已有周回进行中');
 
           const startedAt = now();
           return {
@@ -157,7 +162,13 @@ export function GameProvider({ children, now = () => Date.now(), random = Math.r
           if (!current.activeRun) return current;
 
           const quest = initialQuests.find((candidate) => candidate.id === current.activeRun?.questId);
-          if (!quest) return current;
+          if (!quest) {
+            return {
+              ...current,
+              updatedAt: settledAt,
+              activeRun: null,
+            };
+          }
 
           const settlement = settleSweepRun({
             run: current.activeRun,
@@ -194,6 +205,8 @@ export function GameProvider({ children, now = () => Date.now(), random = Math.r
         return appliedRewards;
       },
       addCurrency(itemId, quantity) {
+        assertPositiveIntegerQuantity(quantity);
+
         updateSave((current) => ({
           ...current,
           updatedAt: now(),
@@ -207,6 +220,8 @@ export function GameProvider({ children, now = () => Date.now(), random = Math.r
         }));
       },
       addMaterial(itemId, quantity) {
+        assertPositiveIntegerQuantity(quantity);
+
         updateSave((current) => ({
           ...current,
           updatedAt: now(),
