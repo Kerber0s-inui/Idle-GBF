@@ -8,6 +8,7 @@ export interface ExpeditionRun {
   endsAt: number;
   totalRuns: number;
   runDurationMs: number;
+  settledAt?: number;
 }
 
 export interface SweepProgress {
@@ -72,9 +73,10 @@ export function settleSweepRun(input: {
   now: number;
   dropRateBonus: number;
   random: () => number;
-}): { completedRuns: number; rewards: RewardStack[]; isComplete: boolean } {
+}): { completedRuns: number; rewards: RewardStack[]; isComplete: boolean; run: ExpeditionRun } {
   const { completedRuns, isComplete } = getSweepProgress({ run: input.run, now: input.now });
-  if (!isComplete) return { completedRuns, rewards: [], isComplete };
+  if (!isComplete) return { completedRuns, rewards: [], isComplete, run: input.run };
+  if (Number.isFinite(input.run.settledAt)) return { completedRuns, rewards: [], isComplete, run: input.run };
 
   const rewards = rollRewards({
     quest: input.quest,
@@ -84,5 +86,5 @@ export function settleSweepRun(input: {
     random: input.random,
   });
 
-  return { completedRuns, rewards, isComplete };
+  return { completedRuns, rewards, isComplete, run: { ...input.run, settledAt: finiteOrZero(input.now) } };
 }

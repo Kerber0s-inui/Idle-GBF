@@ -8,6 +8,7 @@ const ExpeditionRunSchema = z.object({
   endsAt: z.number().finite(),
   totalRuns: z.number().int().min(1).max(100),
   runDurationMs: z.number().finite().min(60_000),
+  settledAt: z.number().finite().optional(),
 });
 
 export const SaveFileSchema = z.object({

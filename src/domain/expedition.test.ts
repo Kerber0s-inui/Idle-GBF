@@ -37,6 +37,34 @@ describe('expedition', () => {
     expect(settlement.rewards).toEqual([]);
   });
 
+  it('marks completed sweep runs as settled when granting rewards', () => {
+    const run = createSweepRun({ quest: initialQuests[0], requestedRuns: 2, startedAt: 0, sweepEfficiency: 0 });
+
+    const settlement = settleSweepRun({ run, quest: initialQuests[0], now: run.endsAt, dropRateBonus: 0, random: () => 0 });
+
+    expect(settlement.rewards.length).toBeGreaterThan(0);
+    expect(settlement.run).toEqual({ ...run, settledAt: run.endsAt });
+    expect(run.settledAt).toBeUndefined();
+  });
+
+  it('does not grant rewards again for already settled sweep runs', () => {
+    const run = createSweepRun({ quest: initialQuests[0], requestedRuns: 2, startedAt: 0, sweepEfficiency: 0 });
+    const firstSettlement = settleSweepRun({ run, quest: initialQuests[0], now: run.endsAt, dropRateBonus: 0, random: () => 0 });
+
+    const secondSettlement = settleSweepRun({
+      run: firstSettlement.run,
+      quest: initialQuests[0],
+      now: run.endsAt + 1000,
+      dropRateBonus: 0,
+      random: () => 0,
+    });
+
+    expect(secondSettlement.completedRuns).toBe(2);
+    expect(secondSettlement.isComplete).toBe(true);
+    expect(secondSettlement.rewards).toEqual([]);
+    expect(secondSettlement.run).toEqual(firstSettlement.run);
+  });
+
   it('clamps invalid requested runs to one finite run', () => {
     const run = createSweepRun({
       quest: initialQuests[0],

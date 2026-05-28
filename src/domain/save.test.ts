@@ -37,6 +37,18 @@ describe('save', () => {
     expect(imported.activeRun).toEqual(save.activeRun);
   });
 
+  it('round-trips settled active sweep runs', () => {
+    const save = createInitialSave(1234);
+    save.activeRun = {
+      ...createSweepRun({ quest: initialQuests[0], requestedRuns: 3, startedAt: 2000, sweepEfficiency: 0 }),
+      settledAt: 3000,
+    };
+
+    const imported = importSave(exportSave(save));
+
+    expect(imported.activeRun).toEqual(save.activeRun);
+  });
+
   it('rejects invalid save json', () => {
     expect(() => importSave('{ "version": "bad" }')).toThrow('存档格式无效');
   });
