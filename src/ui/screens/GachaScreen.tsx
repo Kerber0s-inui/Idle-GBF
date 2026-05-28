@@ -21,9 +21,10 @@ export function GachaScreen() {
     setMessage('');
     try {
       setResults(pullFromGacha(count));
-    } catch {
+    } catch (error) {
       setResults([]);
-      setMessage('抽卡资源不足');
+      const message = error instanceof Error ? error.message : '抽卡失败';
+      setMessage(message.includes('资源不足') ? '抽卡资源不足' : message);
     }
   };
 

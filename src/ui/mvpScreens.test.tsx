@@ -20,4 +20,17 @@ describe('mvp screens', () => {
     await userEvent.click(screen.getByRole('button', { name: '仓库' }));
     expect(screen.getByRole('button', { name: '导出存档' })).toBeInTheDocument();
   });
+
+  it('keeps the cleared quest selected so sweep is immediately available', async () => {
+    render(
+      <GameProvider now={() => 1000}>
+        <AppShell />
+      </GameProvider>,
+    );
+
+    await userEvent.click(screen.getByRole('button', { name: '开始首通' }));
+
+    expect(screen.getByRole('button', { name: '开始扫荡' })).toBeInTheDocument();
+  });
+
 });

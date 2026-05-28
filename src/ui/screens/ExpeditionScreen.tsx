@@ -43,7 +43,7 @@ function summarizeBattle(quest: Quest, save: ReturnType<typeof useGame>['save'])
     summons: initialSummons,
     enemy,
     loadout: createLoadout(save),
-    random: () => 0.5,
+    random: () => 0,
   });
 
   return {
@@ -60,9 +60,11 @@ export function ExpeditionScreen() {
   const [lastRewards, setLastRewards] = useState<RewardStack[]>([]);
   const [sweepCount, setSweepCount] = useState(10);
   const [message, setMessage] = useState('');
+  const [selectedQuestId, setSelectedQuestId] = useState<string | null>(null);
   const activeQuest = initialQuests.find((quest) => quest.id === save.activeRun?.questId);
   const routeQuest = findRouteQuest(save.progress.clearedQuestIds);
-  const targetQuest = activeQuest ?? routeQuest;
+  const selectedQuest = initialQuests.find((quest) => quest.id === selectedQuestId);
+  const targetQuest = activeQuest ?? selectedQuest ?? routeQuest;
   const isCleared = save.progress.clearedQuestIds.includes(targetQuest.id);
   const progress = getSweepProgress();
 
@@ -80,6 +82,7 @@ export function ExpeditionScreen() {
         }));
         markQuestCleared(targetQuest.id);
         grantRewards(rewards);
+        setSelectedQuestId(targetQuest.id);
         setLastRewards(rewards);
         setMessage('首通成功');
       } else {

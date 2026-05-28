@@ -1,15 +1,26 @@
+import { useState } from 'react';
 import { initialCharacters, initialWeapons } from '../../domain/content';
 import { useGame } from '../../state/gameStore';
 import { IconBadge } from '../components/IconBadge';
 
 export function UpgradeScreen() {
-  const { save } = useGame();
+  const { save, spendMaterialForUpgrade } = useGame();
+  const [message, setMessage] = useState('');
   const emberChips = save.inventory.materials['ember-chip'] ?? 0;
   const furnaceCores = save.inventory.materials['furnace-core'] ?? 0;
   const characters = save.inventory.characterIds
     .map((id) => initialCharacters.find((character) => character.id === id))
     .filter(Boolean);
   const weapons = save.inventory.weaponIds.map((id) => initialWeapons.find((weapon) => weapon.id === id)).filter(Boolean);
+
+  const handleUpgrade = (materialId: string, name: string) => {
+    try {
+      spendMaterialForUpgrade(materialId);
+      setMessage(`强化完成（素材已消耗）：${name}`);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : '强化失败');
+    }
+  };
 
   return (
     <>
@@ -39,7 +50,12 @@ export function UpgradeScreen() {
                 <strong>{character?.name}</strong>
                 <span>消耗 ember-chip x1</span>
               </div>
-              <button className="secondary-button" disabled={emberChips < 1} type="button">
+              <button
+                className="secondary-button"
+                disabled={emberChips < 1}
+                type="button"
+                onClick={() => handleUpgrade('ember-chip', character?.name ?? '')}
+              >
                 强化
               </button>
             </div>
@@ -57,13 +73,19 @@ export function UpgradeScreen() {
                 <strong>{weapon?.name}</strong>
                 <span>消耗 furnace-core x1</span>
               </div>
-              <button className="secondary-button" disabled={furnaceCores < 1} type="button">
+              <button
+                className="secondary-button"
+                disabled={furnaceCores < 1}
+                type="button"
+                onClick={() => handleUpgrade('furnace-core', weapon?.name ?? '')}
+              >
                 技能强化
               </button>
             </div>
           ))}
         </div>
       </section>
+      {message ? <p className="status-text">{message}</p> : null}
     </>
   );
 }

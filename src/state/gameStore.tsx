@@ -24,6 +24,7 @@ type GameContextValue = {
   addMaterial: (itemId: string, quantity: number) => void;
   grantRewards: (rewards: RewardStack[]) => void;
   pullFromGacha: (count: 1 | 10) => GachaPoolItem[];
+  spendMaterialForUpgrade: (itemId: string) => void;
 };
 
 type GameProviderProps = {
@@ -58,6 +59,10 @@ function assertPositiveIntegerQuantity(quantity: number) {
   if (!Number.isInteger(quantity) || quantity <= 0) throw new Error('资源数量无效');
 }
 
+function assertPositiveIntegerRewardQuantity(quantity: number) {
+  if (!Number.isInteger(quantity) || quantity <= 0) throw new Error('奖励数量无效');
+}
+
 function addRewardsToInventory(save: SaveFile, rewards: RewardStack[]): SaveFile {
   const currencies = { ...save.inventory.currencies };
   const materials = { ...save.inventory.materials };
@@ -65,6 +70,7 @@ function addRewardsToInventory(save: SaveFile, rewards: RewardStack[]): SaveFile
   const summonIds = [...save.inventory.summonIds];
 
   for (const reward of rewards) {
+    assertPositiveIntegerRewardQuantity(reward.quantity);
     if (reward.kind === 'currency') {
       currencies[reward.itemId] = (currencies[reward.itemId] ?? 0) + reward.quantity;
     } else if (reward.kind === 'material') {
@@ -289,6 +295,24 @@ export function GameProvider({ children, now = () => Date.now(), random = Math.r
         });
 
         return results;
+      },
+      spendMaterialForUpgrade(itemId) {
+        updateSave((current) => {
+          const currentQuantity = current.inventory.materials[itemId] ?? 0;
+          if (currentQuantity < 1) throw new Error('素材不足');
+
+          return {
+            ...current,
+            updatedAt: now(),
+            inventory: {
+              ...current.inventory,
+              materials: {
+                ...current.inventory.materials,
+                [itemId]: currentQuantity - 1,
+              },
+            },
+          };
+        });
       },
     };
   }, [save, now, random]);
