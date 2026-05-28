@@ -1,265 +1,265 @@
-# Idle GBF Design
+# Idle GBF 设计规格
 
-Date: 2026-05-28
+日期：2026-05-28
 
-## Summary
+## 概要
 
-Build a mobile-first local PWA idle RPG. The outer loop follows Whipper-style expeditions: choose a quest, choose repeat count, wait for runs to complete, collect rewards, improve the party, and push farther. The inner growth model follows Granblue Fantasy-style party building, weapon grids, summons, and damage formula categories.
+本项目是一个手机优先的本地 PWA 放置 RPG。外层循环参考 Whipper：选择副本、选择周回次数、等待周回完成、领取奖励、强化队伍、继续推进。内层养成参考《碧蓝幻想》式的队伍、武器盘、召唤石和伤害公式分区。
 
-The first version prioritizes a complete playable system loop over breadth of content. It starts with one route: a fire party fighting wind enemies. Data structures should still allow six elements later.
+第一版优先做出完整可玩的系统闭环，而不是铺开大量内容。首版只做一条路线：火属性队伍对风属性敌人。数据结构需要为后续六属性扩展预留空间。
 
-## Core Loop
+## 核心循环
 
-1. The player progresses through main story quests.
-2. Uncleared quests require one lightweight avatar/pixel auto battle.
-3. Clearing a quest records first clear and unlocks sweep farming for that quest.
-4. Sweep farming lets the player choose a repeat count, capped at 100.
-5. Each run takes time based on quest difficulty, roughly 5 to 10 minutes per run.
-6. Completed sweep runs grant summarized rewards: experience, materials, weapons, summons, and limited gacha resources.
-7. The player upgrades characters, weapons, summons, passives, and grids.
-8. The improved party challenges the next uncleared quest.
+1. 玩家推进主线副本。
+2. 未首通副本需要进行一次轻量头像/像素自动战斗。
+3. 副本通关后记录首通状态，并解锁该副本的扫荡周回。
+4. 扫荡周回时，玩家选择周回次数，上限为 100 次。
+5. 每次周回耗时由副本难度决定，大约 5 到 10 分钟。
+6. 完成的扫荡周回会汇总结算经验、素材、武器、召唤石和有限抽卡资源。
+7. 玩家强化角色、武器、召唤石、被动技能和武器盘。
+8. 强化后的队伍继续挑战下一个未首通副本。
 
-Regular quests do not have turn limits. A challenge battle continues until either the enemy is defeated or the party is defeated. Failure only needs a concise result such as "challenge failed" or "party defeated." Special high-difficulty mechanics are explicitly out of scope for the first version.
+常规副本没有回合限制。挑战战斗会持续到敌人被击败或我方队伍被击败。失败只需要简洁结果，例如“挑战失败”或“队伍被击败”。高难副本特殊机制明确不进入第一版范围。
 
-## Platform
+## 平台
 
-The first version is a local PWA:
+第一版是本地 PWA：
 
-- Mobile-first layout.
-- Local save data.
-- JSON save import/export.
-- No backend account system.
-- No paid currency or monetization.
-- No server-side anti-cheat.
+- 手机优先布局。
+- 本地存档。
+- JSON 存档导入/导出。
+- 不做后端账号系统。
+- 不做付费货币或商业化。
+- 不做服务端防作弊。
 
-This keeps the first version fast to build while preserving a migration path to desktop or server-backed versions later.
+这样可以优先完成可玩的本地版本，同时保留以后迁移到桌面端或带服务器版本的空间。
 
-## Visual And Asset Strategy
+## 视觉与素材策略
 
-Use two asset modes:
+使用两套素材模式：
 
-- Development/local mode can map asset keys to GBFAL IDs or URLs.
-- Release mode maps the same asset keys to placeholder or original assets.
+- 开发/本地模式可以把 asset key 映射到 GBFAL ID 或 URL。
+- 发布模式把同一套 asset key 映射到占位素材或原创素材。
 
-The project must not commit, redistribute, or package Cygames/Granblue Fantasy assets. Local caches must be gitignored. Player-facing names are original, not copied GBF names.
+项目不能提交、再分发或打包 Cygames/Granblue Fantasy 素材。本地缓存目录必须加入 `.gitignore`。玩家可见名称必须原创，不能复制 GBF 原名。
 
-Naming style: fantasy plus magic technology. Examples of acceptable flavor include furnace cores, circuits, star rails, protocols, machine gods, floating islands, and astral engines. Names should feel like RPG items or characters, not plain mechanical labels like "fire SSR attack sword."
+命名风格为奇幻 + 魔法科技。可以使用炉心、回路、星轨、协议、机神、浮空岛、星能引擎等意象。名称应该像 RPG 角色或装备，而不是“火属性 SSR 攻刃剑”这种直白功能标签。
 
-## Content Scope
+## 内容范围
 
-First version content:
+第一版内容：
 
-- One main route focused on a fire party versus wind enemies.
-- Free characters unlocked by main story progress.
-- A game-resource gacha that can produce characters, character-linked weapons, other weapons, and summons.
-- Quest drops that include grid-relevant weapons, summons, materials, experience, and limited gacha resource fragments.
-- A free farmable grid path, similar in spirit to GBF's farmable weapon progression.
+- 一条火属性队伍对风属性敌人的主路线。
+- 通过主线进度解锁免费角色。
+- 使用游戏内资源的抽卡系统，可产出角色、角色关联武器、其他武器和召唤石。
+- 副本掉落与武器盘相关的武器、召唤石、素材、经验和有限抽卡资源碎片。
+- 一条可通过免费周回成型的武器盘路线，精神上接近 GBF 的可农武器成长。
 
-Out of scope for first version:
+第一版不做：
 
-- Full six-element content.
-- High-difficulty special mechanics.
-- PvP.
-- Guilds.
-- Events and event schedules.
-- Paid systems.
-- Online accounts.
-- Full debuff/buff ecosystem.
-- Character active skills.
-- Complex battle cinematics.
-- Redistribution of GBF assets.
+- 完整六属性内容。
+- 高难副本特殊机制。
+- PVP。
+- 公会。
+- 活动与活动排期。
+- 付费系统。
+- 联网账号。
+- 完整 debuff/buff 生态。
+- 角色主动技能。
+- 复杂战斗演出。
+- GBF 素材再分发。
 
-## Character Design
+## 角色设计
 
-Characters are differentiated by base stats, element, rarity, two passive skills, and charge attack.
+角色通过基础数值、属性、稀有度、两个被动技能和奥义来区分。
 
-First version battle actions:
+第一版战斗动作只有：
 
-- Normal attacks.
-- Charge attacks.
+- 普通攻击。
+- 奥义。
 
-No character active skills are included in the first version.
+第一版不包含角色主动技能。
 
-Each character has exactly two passive slots. Passives can affect, for example:
+每个角色固定有两个被动槽。被动可以影响：
 
-- Personal attack or defense.
-- Party attack categories.
-- Charge gain.
-- Charge attack damage or cap.
-- Multiattack rate.
-- Critical chance or critical damage.
-- Damage cap.
-- Survival.
-- Sweep efficiency.
-- Drop bonuses.
+- 个人攻击或防御。
+- 全队攻击分区。
+- 奥义槽获取。
+- 奥义伤害或奥义上限。
+- 连击率。
+- 暴击率或暴击伤害。
+- 伤害上限。
+- 生存能力。
+- 扫荡效率。
+- 掉落加成。
 
-Character growth includes level, uncap/progression, passive unlock or strengthening, and charge attack strengthening.
+角色成长包括等级、突破/进阶、被动解锁或强化、奥义强化。
 
-## Battle Design
+## 战斗设计
 
-First-clear battles use lightweight avatar or pixel presentation. They are still fully automatic.
+首通战斗使用轻量头像或像素表现。战斗仍然完全自动。
 
-Battle flow:
+战斗流程：
 
-1. Initialize party, enemies, grid, summons, passives, and formula modifiers.
-2. Each turn, characters act in party order.
-3. A character uses charge attack when charge gauge allows it.
-4. Otherwise the character performs normal attacks.
-5. Enemy actions are resolved automatically.
-6. The battle ends when enemies are defeated or the party is defeated.
+1. 初始化队伍、敌人、武器盘、召唤石、被动和公式修正。
+2. 每回合按队伍顺序行动。
+3. 角色奥义槽满足条件时释放奥义。
+4. 否则角色进行普通攻击。
+5. 敌人行动自动结算。
+6. 战斗在敌人被击败或我方队伍被击败时结束。
 
-The battle result should include enough structured data for UI and tests:
+战斗结果需要包含足够结构化的数据，供 UI 和测试使用：
 
-- Win or loss.
-- Turn logs.
-- Damage records.
-- Charge attack events.
-- Passive effects applied or triggered.
-- Final party and enemy state.
+- 胜利或失败。
+- 回合日志。
+- 伤害记录。
+- 奥义事件。
+- 被动生效或触发记录。
+- 最终我方和敌方状态。
 
-Sweep mode does not play per-run battles. It uses the first-clear state and quest configuration to generate time-based completion and reward summaries.
+扫荡模式不播放每次战斗。它基于首通状态和副本配置生成按时间完成的任务，并在结算时汇总奖励。
 
-## Formula Design
+## 公式设计
 
-The formula module should be separate from UI, storage, and battle flow. It should follow GBF-style categories as closely as practical:
+公式模块必须独立于 UI、存储和战斗流程。它应该尽量按 GBF 风格的分区搭建：
 
-- Normal attack modifiers.
-- Magna/farmable attack modifiers.
-- EX attack modifiers.
-- Summon aura modifiers.
-- Element advantage.
-- Critical chance and expected critical value.
-- Multiattack.
-- Charge attack multiplier.
-- Damage cap.
-- Damage cap up.
-- Passive modifiers.
+- 通常攻刃修正。
+- 方阵/可农攻刃修正。
+- EX 攻刃修正。
+- 召唤石加护修正。
+- 属性克制。
+- 暴击率和暴击期望。
+- 连击。
+- 奥义倍率。
+- 伤害上限。
+- 伤害上限提升。
+- 被动修正。
 
-Implementation notes must identify which formula parts are approximate or intentionally simplified. This makes later correction possible without guessing.
+实现备注需要说明哪些公式部分是近似实现或刻意简化。这样后续校准时不会忘记哪些地方是暂定值。
 
-The formation UI should explain major contribution categories so the player can understand why a grid change increases or decreases performance.
+编成界面需要解释主要贡献分区，让玩家理解为什么某次换盘会提升或降低表现。
 
-## Expedition And Sweep Rules
+## 远征与扫荡规则
 
-Quest fields should include:
+副本字段应包括：
 
-- Quest ID.
-- Element.
-- Difficulty tier.
-- Per-run duration.
-- Enemy configuration for first clear.
-- Drop table.
-- First-clear rewards.
-- Unlock requirements.
+- 副本 ID。
+- 属性。
+- 难度层级。
+- 单次周回耗时。
+- 首通敌人配置。
+- 掉落表。
+- 首通奖励。
+- 解锁条件。
 
-Sweep rules:
+扫荡规则：
 
-- Only available after first clear.
-- Player chooses repeat count.
-- Repeat count maximum is 100.
-- Total duration equals per-run duration times repeat count.
-- The player can check progress before completion.
-- Settlement summarizes all completed runs.
+- 只有首通后可用。
+- 玩家选择周回次数。
+- 周回次数上限为 100。
+- 总耗时等于单次耗时乘以周回次数。
+- 完成前玩家可以查看进度。
+- 结算时汇总所有已完成周回。
 
-The first version can use time as the main pacing limiter. AP, tickets, stamina, or other entry resources can be added later if needed.
+第一版可以用时间作为主要节奏限制。AP、门票、体力或其他入场资源可以以后再加。
 
-## Rewards And Economy
+## 奖励与经济
 
-Use two reward tracks:
+奖励分为两条线：
 
-- Progression rewards: main story and first-clear rewards grant free characters, major gacha resources, key unlock materials, and milestones.
-- Farming rewards: sweeps grant weapons, summons, skill materials, character growth resources, experience, and limited gacha resource fragments.
+- 推进奖励：主线和首通奖励提供免费角色、大量抽卡资源、关键突破素材和里程碑解锁。
+- 周回奖励：扫荡提供武器、召唤石、技能素材、角色成长资源、经验和有限抽卡资源碎片。
 
-Gacha resources should not be infinitely farmable at high rates from sweeps. Farming can contribute slowly, but main progression should be the primary source of large pulls.
+抽卡资源不能通过扫荡高速无限产出。周回可以缓慢贡献，但大额抽卡资源主要来自主线推进。
 
-Weapon and summon acquisition uses a mixed GBF-like model:
+武器和召唤石获取使用类似 GBF 的混合模式：
 
-- Gacha can grant characters, weapons, and summons.
-- Quests can drop farmable weapons and summons.
-- Free farmed grids should be viable for the first route.
+- 抽卡可以获得角色、武器和召唤石。
+- 副本可以掉落可农武器和召唤石。
+- 免费农出来的武器盘应该足以完成首版路线。
 
-## UI Structure
+## UI 结构
 
-Use a mobile-first PWA interface with five bottom navigation entries:
+使用手机优先的 PWA 界面，底部有五个导航入口：
 
-- Expedition: main screen for quest selection, first clear, sweep setup, progress, and settlement.
-- Formation: party, weapon grid, summons, power summary, and formula breakdown.
-- Upgrade: character, weapon, summon, passive, uncap, and skill upgrades.
-- Gacha: resource gacha, pool details, and pull history.
-- Inventory: materials, weapons, summons, drop history, save import/export, and asset mode settings.
+- 远征：主界面，用于副本选择、首通挑战、扫荡设置、进度查看和奖励结算。
+- 编成：队伍、武器盘、召唤石、战力摘要和公式拆解。
+- 强化：角色、武器、召唤石、被动、突破和技能强化。
+- 抽卡：资源抽卡、卡池详情和抽卡记录。
+- 仓库：素材、武器、召唤石、掉落历史、存档导入/导出和素材模式设置。
 
-The home experience should prioritize expeditions. Formation and upgrades are nearby, but the player should first see what they are currently farming or challenging.
+首页体验应优先服务远征。编成和强化要足够近，但玩家打开游戏时首先应该看到当前正在刷什么、下一步要挑战什么。
 
-## Data Model
+## 数据模型
 
-Core entities:
+核心实体：
 
-- Character.
-- Passive.
-- ChargeAttack.
-- Weapon.
-- WeaponSkill.
-- Summon.
-- Quest.
-- Enemy.
-- PartyLoadout.
-- WeaponGrid.
-- Inventory.
-- PlayerProgress.
-- GachaPool.
-- RewardTable.
-- BattleResult.
-- ExpeditionRun.
-- SaveFile.
+- Character。
+- Passive。
+- ChargeAttack。
+- Weapon。
+- WeaponSkill。
+- Summon。
+- Quest。
+- Enemy。
+- PartyLoadout。
+- WeaponGrid。
+- Inventory。
+- PlayerProgress。
+- GachaPool。
+- RewardTable。
+- BattleResult。
+- ExpeditionRun。
+- SaveFile。
 
-Save data must include a version number. Imports should validate schema and migrate old versions when possible.
+存档必须包含版本号。导入存档时应做 schema 校验，并在可能时迁移旧版本数据。
 
-## Architecture
+## 架构
 
-Suggested implementation architecture:
+建议实现架构：
 
-- TypeScript PWA frontend.
-- React/Vite or a similarly lightweight frontend stack.
-- Pure TypeScript domain modules for formulas, battles, expedition settlement, rewards, gacha, and save migration.
-- UI components call domain modules but do not own core rules.
-- Asset resolver maps stable asset keys to either local/development GBFAL references or release placeholders/original files.
+- TypeScript PWA 前端。
+- React/Vite 或类似的轻量前端栈。
+- 公式、战斗、远征结算、奖励、抽卡和存档迁移使用纯 TypeScript 领域模块。
+- UI 组件调用领域模块，但不拥有核心规则。
+- 资源解析器把稳定的 asset key 映射到开发/本地 GBFAL 引用，或发布模式的占位/原创文件。
 
-Suggested module boundaries:
+建议模块边界：
 
-- `formula`: damage and modifier calculations.
-- `battle`: first-clear auto battle simulation.
-- `expedition`: sweep timing and settlement.
-- `progression`: unlocks, story progress, first-clear flags.
-- `inventory`: owned characters, weapons, summons, materials, currencies.
-- `gacha`: pools, probabilities, pull results.
-- `save`: persistence, import/export, schema validation, migration.
-- `assets`: asset key resolution and mode switching.
-- `ui`: PWA screens and presentation.
+- `formula`：伤害和修正计算。
+- `battle`：首通自动战斗模拟。
+- `expedition`：扫荡耗时和结算。
+- `progression`：解锁、主线进度、首通标记。
+- `inventory`：已拥有角色、武器、召唤石、素材和货币。
+- `gacha`：卡池、概率和抽卡结果。
+- `save`：持久化、导入/导出、schema 校验和迁移。
+- `assets`：asset key 解析和素材模式切换。
+- `ui`：PWA 页面和展示层。
 
-## Testing Strategy
+## 测试策略
 
-Test domain logic before UI polish:
+优先测试领域逻辑，再做 UI 打磨：
 
-- Formula tests for attack categories, summon aura, element advantage, critical expected value, charge attack, caps, and passive modifiers.
-- Battle tests for win/loss, charge attack timing, normal attacks, enemy damage, and passive application.
-- Expedition tests for first-clear gating, repeat count cap, duration calculation, progress, and settlement.
-- Reward tests for drop aggregation, first-clear rewards, and limited gacha resource generation.
-- Save tests for import, export, validation, and version migration.
+- 公式测试覆盖攻刃分区、召唤加护、属性克制、暴击期望、奥义、上限和被动修正。
+- 战斗测试覆盖胜负、奥义时机、普通攻击、敌人伤害和被动应用。
+- 远征测试覆盖首通门槛、周回次数上限、耗时计算、进度和结算。
+- 奖励测试覆盖掉落汇总、首通奖励和有限抽卡资源生成。
+- 存档测试覆盖导入、导出、校验和版本迁移。
 
-UI testing should cover the main mobile flow:
+UI 测试至少覆盖手机端主流程：
 
-1. Start first-clear battle.
-2. Win and unlock sweep.
-3. Start sweep with a chosen count.
-4. Settle rewards.
-5. Upgrade and adjust formation.
-6. Pull gacha with earned resources.
-7. Export and import save data.
+1. 开始首通战斗。
+2. 胜利并解锁扫荡。
+3. 选择次数开始扫荡。
+4. 结算奖励。
+5. 强化并调整编成。
+6. 使用获得的资源抽卡。
+7. 导出和导入存档。
 
-## Open Decisions For Implementation Planning
+## 实现计划阶段待定项
 
-- Exact frontend framework and UI library.
-- Initial naming set for characters, weapons, summons, and materials.
-- Exact GBF formula references and first-pass approximation list.
-- First route quest count and progression pacing.
-- Whether to implement sweep completion using real wall-clock time immediately or a test-friendly accelerated clock in development mode.
+- 具体前端框架和 UI 库。
+- 初始角色、武器、召唤石和素材命名。
+- 精确 GBF 公式参考来源和第一版近似清单。
+- 首条路线的副本数量和推进节奏。
+- 扫荡完成是否第一版就使用真实墙钟时间，或在开发模式提供测试用加速时钟。
