@@ -1,3 +1,10 @@
+import { GameProvider } from './state/gameStore';
+import { AppShell } from './ui/AppShell';
+
 export function App() {
-  return <main className="app">Idle GBF</main>;
+  return (
+    <GameProvider>
+      <AppShell />
+    </GameProvider>
+  );
 }
