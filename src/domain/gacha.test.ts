@@ -10,6 +10,14 @@ describe('gacha', () => {
     expect(result.results).toHaveLength(10);
   });
 
+  it('spends tickets before crystals when resources are mixed', () => {
+    const pool = createInitialGachaPool(initialCharacters, initialWeapons, initialSummons);
+    const result = pullGacha({ pool, crystals: 300, tickets: 9, count: 10, random: () => 0.01 });
+    expect(result.remainingTickets).toBe(0);
+    expect(result.remainingCrystals).toBe(0);
+    expect(result.results).toHaveLength(10);
+  });
+
   it('rejects pulls without enough resources', () => {
     const pool = createInitialGachaPool(initialCharacters, initialWeapons, initialSummons);
     expect(() => pullGacha({ pool, crystals: 100, tickets: 0, count: 10, random: () => 0.5 })).toThrow('抽卡资源不足');

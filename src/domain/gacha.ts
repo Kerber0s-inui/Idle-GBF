@@ -41,13 +41,13 @@ export function createInitialGachaPool(characters: Character[], weapons: Weapon[
 }
 
 export function pullGacha(input: { pool: GachaPool; crystals: number; tickets: number; count: 1 | 10; random: () => number }) {
-  const ticketCost = input.count === 1 ? 1 : 10;
-  const crystalCost = input.count === 1 ? 300 : 3000;
   let remainingTickets = input.tickets;
   let remainingCrystals = input.crystals;
-  if (remainingTickets >= ticketCost) remainingTickets -= ticketCost;
-  else if (remainingCrystals >= crystalCost) remainingCrystals -= crystalCost;
-  else throw new Error('抽卡资源不足');
+  for (let pull = 0; pull < input.count; pull += 1) {
+    if (remainingTickets > 0) remainingTickets -= 1;
+    else if (remainingCrystals >= 300) remainingCrystals -= 300;
+    else throw new Error('抽卡资源不足');
+  }
 
   const totalWeight = input.pool.items.reduce((total, item) => total + item.weight, 0);
   const results: GachaPoolItem[] = [];

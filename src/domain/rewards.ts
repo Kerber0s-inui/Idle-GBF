@@ -35,7 +35,7 @@ export function rollRewards(input: {
   }
   for (let run = 0; run < input.runCount; run += 1) {
     for (const entry of input.quest.dropTable) {
-      if (input.random() <= Math.min(1, entry.chance * (1 + input.dropRateBonus))) {
+      if (input.random() < Math.min(1, entry.chance * (1 + input.dropRateBonus))) {
         rewards.push({ itemId: entry.itemId, kind: entry.kind, quantity: entry.quantity });
       }
     }
