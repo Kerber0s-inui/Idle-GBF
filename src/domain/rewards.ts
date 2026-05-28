@@ -16,6 +16,18 @@ export function summarizeRewards(rewards: RewardStack[]): RewardStack[] {
   return [...map.values()];
 }
 
+function normalizeRunCount(runCount: number) {
+  if (!Number.isFinite(runCount)) return 0;
+  return Math.max(0, Math.floor(runCount));
+}
+
+function normalizeRandom(value: number) {
+  if (!Number.isFinite(value)) return 0;
+  if (value < 0) return 0;
+  if (value >= 1) return 1 - Number.EPSILON;
+  return value;
+}
+
 export function rollRewards(input: {
   quest: Quest;
   runCount: number;
@@ -24,6 +36,7 @@ export function rollRewards(input: {
   random: () => number;
 }): RewardStack[] {
   const rewards: RewardStack[] = [];
+  const runCount = normalizeRunCount(input.runCount);
   if (input.includeFirstClear) {
     rewards.push(
       ...input.quest.firstClearRewards.map((reward) => ({
@@ -33,9 +46,9 @@ export function rollRewards(input: {
       })),
     );
   }
-  for (let run = 0; run < input.runCount; run += 1) {
+  for (let run = 0; run < runCount; run += 1) {
     for (const entry of input.quest.dropTable) {
-      if (input.random() < Math.min(1, entry.chance * (1 + input.dropRateBonus))) {
+      if (normalizeRandom(input.random()) < Math.min(1, entry.chance * (1 + input.dropRateBonus))) {
         rewards.push({ itemId: entry.itemId, kind: entry.kind, quantity: entry.quantity });
       }
     }

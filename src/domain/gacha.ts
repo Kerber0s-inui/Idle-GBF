@@ -13,6 +13,23 @@ export interface GachaPool {
   items: GachaPoolItem[];
 }
 
+function normalizeRandom(value: number) {
+  if (!Number.isFinite(value)) return 0;
+  if (value < 0) return 0;
+  if (value >= 1) return 1 - Number.EPSILON;
+  return value;
+}
+
+function validatePool(pool: GachaPool) {
+  if (pool.items.length === 0) throw new Error('卡池为空');
+  const totalWeight = pool.items.reduce((total, item) => {
+    if (!Number.isFinite(item.weight) || item.weight <= 0) throw new Error('卡池权重无效');
+    return total + item.weight;
+  }, 0);
+  if (!Number.isFinite(totalWeight) || totalWeight <= 0) throw new Error('卡池权重无效');
+  return totalWeight;
+}
+
 export function createInitialGachaPool(characters: Character[], weapons: Weapon[], summons: Summon[]): GachaPool {
   return {
     id: 'standard-furnace-pool',
@@ -41,6 +58,7 @@ export function createInitialGachaPool(characters: Character[], weapons: Weapon[
 }
 
 export function pullGacha(input: { pool: GachaPool; crystals: number; tickets: number; count: 1 | 10; random: () => number }) {
+  const totalWeight = validatePool(input.pool);
   let remainingTickets = input.tickets;
   let remainingCrystals = input.crystals;
   for (let pull = 0; pull < input.count; pull += 1) {
@@ -49,10 +67,9 @@ export function pullGacha(input: { pool: GachaPool; crystals: number; tickets: n
     else throw new Error('抽卡资源不足');
   }
 
-  const totalWeight = input.pool.items.reduce((total, item) => total + item.weight, 0);
   const results: GachaPoolItem[] = [];
   for (let i = 0; i < input.count; i += 1) {
-    let roll = input.random() * totalWeight;
+    let roll = normalizeRandom(input.random()) * totalWeight;
     const picked = input.pool.items.find((item) => {
       roll -= item.weight;
       return roll <= 0;

@@ -19,6 +19,37 @@ describe('rewards', () => {
     expect(rewards.some((reward) => reward.itemId === 'zero-chance-drop')).toBe(false);
   });
 
+  it('does not grant zero chance drops for negative random values', () => {
+    const quest = {
+      ...initialQuests[0],
+      dropTable: [{ itemId: 'zero-chance-drop', kind: 'material' as const, quantity: 1, chance: 0 }],
+    };
+    const rewards = rollRewards({ quest, runCount: 1, includeFirstClear: false, dropRateBonus: 0, random: () => -1 });
+    expect(rewards.some((reward) => reward.itemId === 'zero-chance-drop')).toBe(false);
+  });
+
+  it('normalizes invalid run counts to zero farming runs', () => {
+    const rewards = rollRewards({
+      quest: initialQuests[0],
+      runCount: Number.POSITIVE_INFINITY,
+      includeFirstClear: false,
+      dropRateBonus: 0,
+      random: () => 0,
+    });
+    expect(rewards).toEqual([]);
+  });
+
+  it('normalizes negative run counts to zero farming runs', () => {
+    const rewards = rollRewards({
+      quest: initialQuests[0],
+      runCount: -10,
+      includeFirstClear: false,
+      dropRateBonus: 0,
+      random: () => 0,
+    });
+    expect(rewards).toEqual([]);
+  });
+
   it('aggregates reward quantities by item and kind', () => {
     const summary = summarizeRewards([
       { itemId: 'crystal', kind: 'currency', quantity: 100 },
