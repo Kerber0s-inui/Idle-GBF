@@ -209,17 +209,6 @@ describe('game store', () => {
     expect(result.current.save.inventory.currencies.crystal).toBe(0);
   });
 
-  it('spends material for upgrade actions', () => {
-    const wrapper = ({ children }: { children: ReactNode }) => <GameProvider now={() => 1000}>{children}</GameProvider>;
-    const { result } = renderHook(() => useGame(), { wrapper });
-
-    act(() => result.current.addMaterial('ember-chip', 1));
-    act(() => result.current.spendMaterialForUpgrade('ember-chip'));
-
-    expect(result.current.save.inventory.materials['ember-chip']).toBe(0);
-    expect(() => act(() => result.current.spendMaterialForUpgrade('ember-chip'))).toThrow('素材不足');
-  });
-
   it('pulls gacha by spending resources and adding owned results', () => {
     const wrapper = ({ children }: { children: ReactNode }) => <GameProvider now={() => 1000} random={() => 0}>{children}</GameProvider>;
     const { result } = renderHook(() => useGame(), { wrapper });

@@ -24,7 +24,6 @@ type GameContextValue = {
   addMaterial: (itemId: string, quantity: number) => void;
   grantRewards: (rewards: RewardStack[]) => void;
   pullFromGacha: (count: 1 | 10) => GachaPoolItem[];
-  spendMaterialForUpgrade: (itemId: string) => void;
 };
 
 type GameProviderProps = {
@@ -295,24 +294,6 @@ export function GameProvider({ children, now = () => Date.now(), random = Math.r
         });
 
         return results;
-      },
-      spendMaterialForUpgrade(itemId) {
-        updateSave((current) => {
-          const currentQuantity = current.inventory.materials[itemId] ?? 0;
-          if (currentQuantity < 1) throw new Error('素材不足');
-
-          return {
-            ...current,
-            updatedAt: now(),
-            inventory: {
-              ...current.inventory,
-              materials: {
-                ...current.inventory.materials,
-                [itemId]: currentQuantity - 1,
-              },
-            },
-          };
-        });
       },
     };
   }, [save, now, random]);

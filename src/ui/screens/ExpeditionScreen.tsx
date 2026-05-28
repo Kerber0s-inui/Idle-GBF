@@ -109,6 +109,13 @@ export function ExpeditionScreen() {
     setMessage(rewards.length > 0 ? '扫荡结算完成' : '扫荡尚未完成');
   };
 
+  const handleContinueRoute = () => {
+    setSelectedQuestId(null);
+    setMessage('已切回主线进度');
+    setLastRewards([]);
+    setBattleLines([]);
+  };
+
   return (
     <>
       <header className="screen-header">
@@ -162,6 +169,11 @@ export function ExpeditionScreen() {
               <button className="secondary-button" type="button" onClick={handleSettle}>
                 结算
               </button>
+              {selectedQuestId && routeQuest.id !== targetQuest.id ? (
+                <button className="secondary-button" type="button" onClick={handleContinueRoute}>
+                  继续主线
+                </button>
+              ) : null}
             </>
           )}
         </div>
