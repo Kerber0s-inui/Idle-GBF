@@ -2,6 +2,12 @@ import { describe, expect, it } from 'vitest';
 import { initialCharacters, initialEnemies, initialQuests, initialWeapons, initialSummons } from './content';
 
 describe('initial content', () => {
+  const allModifiers = [
+    ...initialCharacters.flatMap((character) => character.passives.flatMap((passive) => passive.modifiers)),
+    ...initialWeapons.flatMap((weapon) => weapon.skills.flatMap((skill) => skill.modifiers)),
+  ];
+  const allRewards = initialQuests.flatMap((quest) => [...quest.firstClearRewards, ...quest.dropTable]);
+
   it('contains one fire route with four starter characters', () => {
     const firstCharacterPassives = initialCharacters[0].passives;
 
@@ -22,6 +28,10 @@ describe('initial content', () => {
   });
 
   it('contains farmable fire grid weapons and one wind enemy route', () => {
+    expect(initialWeapons).toHaveLength(2);
+    expect(initialSummons).toHaveLength(2);
+    expect(initialEnemies).toHaveLength(3);
+    expect(initialQuests).toHaveLength(3);
     expect(initialWeapons.some((weapon) => weapon.source === 'farmable')).toBe(true);
     expect(initialSummons.some((summon) => summon.aura.target === 'magna')).toBe(true);
     expect(initialEnemies.every((enemy) => enemy.element === 'wind')).toBe(true);
@@ -31,16 +41,7 @@ describe('initial content', () => {
   });
 
   it('includes labels on every content modifier', () => {
-    const characterModifiers = initialCharacters.flatMap((character) =>
-      character.passives.flatMap((passive) => passive.modifiers),
-    );
-    const weaponModifiers = initialWeapons.flatMap((weapon) =>
-      weapon.skills.flatMap((skill) => skill.modifiers),
-    );
-
-    expect([...characterModifiers, ...weaponModifiers].every((modifier) => typeof modifier.label === 'string')).toBe(
-      true,
-    );
+    expect(allModifiers.every((modifier) => typeof modifier.label === 'string')).toBe(true);
   });
 
   it('uses planned weapon skill and summon progression fields', () => {
@@ -54,7 +55,6 @@ describe('initial content', () => {
   });
 
   it('uses planned quest reward tables', () => {
-    const allRewards = initialQuests.flatMap((quest) => [...quest.firstClearRewards, ...quest.dropTable]);
     const questMain2GachaTicket = initialQuests
       .find((quest) => quest.id === 'quest-main-2')
       ?.firstClearRewards.find((reward) => reward.itemId === 'gacha-ticket');
@@ -72,5 +72,41 @@ describe('initial content', () => {
           typeof reward.chance === 'number',
       ),
     ).toBe(true);
+  });
+
+  it('keeps quest references resolvable', () => {
+    const enemyIds = new Set(initialEnemies.map((enemy) => enemy.id));
+    const questIds = new Set(initialQuests.map((quest) => quest.id));
+    const weaponIds = new Set(initialWeapons.map((weapon) => weapon.id));
+    const summonIds = new Set(initialSummons.map((summon) => summon.id));
+    const itemExists = (kind: string, itemId: string) =>
+      (kind === 'weapon' && weaponIds.has(itemId)) ||
+      (kind === 'summon' && summonIds.has(itemId)) ||
+      kind === 'currency' ||
+      kind === 'material';
+
+    expect(initialQuests.every((quest) => enemyIds.has(quest.enemyId))).toBe(true);
+    expect(
+      initialQuests.every((quest) => quest.unlockAfterQuestId === undefined || questIds.has(quest.unlockAfterQuestId)),
+    ).toBe(true);
+    expect(initialQuests.every((quest) => quest.dropTable.every((reward) => itemExists(reward.kind, reward.itemId)))).toBe(
+      true,
+    );
+  });
+
+  it('keeps numeric content values within valid ranges', () => {
+    const allStats = [
+      ...initialCharacters.map((character) => character.stats),
+      ...initialWeapons.map((weapon) => weapon.stats),
+      ...initialSummons.map((summon) => summon.stats),
+      ...initialEnemies.map((enemy) => enemy.stats),
+    ];
+    const leveledContent = [...initialCharacters, ...initialWeapons, ...initialSummons];
+
+    expect(allRewards.every((reward) => reward.chance >= 0 && reward.chance <= 1 && reward.quantity > 0)).toBe(true);
+    expect(allStats.every((stats) => stats.hp >= 0 && stats.atk >= 0 && stats.defense >= 0)).toBe(true);
+    expect(initialEnemies.every((enemy) => enemy.normalAttackDamage > 0)).toBe(true);
+    expect(leveledContent.every((entry) => entry.level >= 1 && entry.level <= entry.maxLevel)).toBe(true);
+    expect(allModifiers.every((modifier) => Number.isFinite(modifier.value))).toBe(true);
   });
 });
