@@ -179,6 +179,38 @@ describe('game store', () => {
     expect(result.current.save.inventory.materials['ember-chip']).toBe(3);
   });
 
+  it('grants mixed rewards into inventory', () => {
+    const wrapper = ({ children }: { children: ReactNode }) => <GameProvider now={() => 1000}>{children}</GameProvider>;
+    const { result } = renderHook(() => useGame(), { wrapper });
+
+    act(() =>
+      result.current.grantRewards([
+        { itemId: 'crystal', kind: 'currency', quantity: 300 },
+        { itemId: 'ember-chip', kind: 'material', quantity: 2 },
+        { itemId: 'summon-helios-engine', kind: 'summon', quantity: 1 },
+      ]),
+    );
+
+    expect(result.current.save.inventory.currencies.crystal).toBe(300);
+    expect(result.current.save.inventory.materials['ember-chip']).toBe(2);
+    expect(result.current.save.inventory.summonIds).toContain('summon-helios-engine');
+  });
+
+  it('pulls gacha by spending resources and adding owned results', () => {
+    const wrapper = ({ children }: { children: ReactNode }) => <GameProvider now={() => 1000} random={() => 0}>{children}</GameProvider>;
+    const { result } = renderHook(() => useGame(), { wrapper });
+
+    act(() => result.current.addCurrency('crystal', 300));
+    let results: ReturnType<typeof result.current.pullFromGacha> = [];
+    act(() => {
+      results = result.current.pullFromGacha(1);
+    });
+
+    expect(results).toHaveLength(1);
+    expect(result.current.save.inventory.currencies.crystal).toBe(0);
+    expect(result.current.save.inventory.characterIds).toContain(results[0].id);
+  });
+
   it('imports save JSON into state and localStorage', () => {
     const wrapper = ({ children }: { children: ReactNode }) => <GameProvider now={() => 1000}>{children}</GameProvider>;
     const { result } = renderHook(() => useGame(), { wrapper });

@@ -1,11 +1,12 @@
 import { createContext, useContext, useMemo, useRef, useState, type ReactNode } from 'react';
-import { initialQuests } from '../domain/content';
+import { initialCharacters, initialQuests, initialSummons, initialWeapons } from '../domain/content';
 import {
   createSweepRun,
   getSweepProgress as getDomainSweepProgress,
   settleSweepRun,
   type SweepProgress,
 } from '../domain/expedition';
+import { createInitialGachaPool, pullGacha, type GachaPoolItem } from '../domain/gacha';
 import type { RewardStack } from '../domain/rewards';
 import { createInitialSave, importSave, SaveFileSchema, type SaveFile } from '../domain/save';
 
@@ -21,6 +22,8 @@ type GameContextValue = {
   settleActiveSweep: (nowOverride?: number) => RewardStack[];
   addCurrency: (itemId: string, quantity: number) => void;
   addMaterial: (itemId: string, quantity: number) => void;
+  grantRewards: (rewards: RewardStack[]) => void;
+  pullFromGacha: (count: 1 | 10) => GachaPoolItem[];
 };
 
 type GameProviderProps = {
@@ -233,6 +236,59 @@ export function GameProvider({ children, now = () => Date.now(), random = Math.r
             },
           },
         }));
+      },
+      grantRewards(rewards) {
+        updateSave((current) => ({
+          ...addRewardsToInventory(current, rewards),
+          updatedAt: now(),
+        }));
+      },
+      pullFromGacha(count) {
+        let results: GachaPoolItem[] = [];
+
+        updateSave((current) => {
+          const pull = pullGacha({
+            pool: createInitialGachaPool(initialCharacters, initialWeapons, initialSummons),
+            crystals: current.inventory.currencies.crystal ?? 0,
+            tickets: current.inventory.currencies['gacha-ticket'] ?? 0,
+            count,
+            random,
+          });
+          results = pull.results;
+
+          const characterIds = [...current.inventory.characterIds];
+          const rewards: RewardStack[] = [];
+          for (const result of pull.results) {
+            if (result.kind === 'character') {
+              if (!characterIds.includes(result.id)) characterIds.push(result.id);
+            } else {
+              rewards.push({ itemId: result.id, kind: result.kind, quantity: 1 });
+            }
+          }
+
+          const rewarded = addRewardsToInventory(
+            {
+              ...current,
+              inventory: {
+                ...current.inventory,
+                characterIds,
+                currencies: {
+                  ...current.inventory.currencies,
+                  crystal: pull.remainingCrystals,
+                  'gacha-ticket': pull.remainingTickets,
+                },
+              },
+            },
+            rewards,
+          );
+
+          return {
+            ...rewarded,
+            updatedAt: now(),
+          };
+        });
+
+        return results;
       },
     };
   }, [save, now, random]);
