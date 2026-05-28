@@ -1,0 +1,11 @@
+{
+  "name": "Idle GBF",
+  "short_name": "Idle GBF",
+  "description": "手机优先的本地放置 RPG 原型",
+  "theme_color": "#10131a",
+  "background_color": "#10131a",
+  "display": "standalone",
+  "orientation": "portrait",
+  "start_url": "/",
+  "icons": []
+}
