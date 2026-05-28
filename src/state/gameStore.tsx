@@ -7,8 +7,19 @@ import {
   type SweepProgress,
 } from '../domain/expedition';
 import { createInitialGachaPool, pullGacha, type GachaPoolItem } from '../domain/gacha';
+import {
+  applyCharacterExp,
+  uncapCharacter as uncapCharacterGrowth,
+  uncapSummon as uncapSummonGrowth,
+  uncapWeapon as uncapWeaponGrowth,
+  upgradeCharacter as upgradeCharacterGrowth,
+  upgradeSummon as upgradeSummonGrowth,
+  upgradeWeapon as upgradeWeaponGrowth,
+  upgradeWeaponSkill as upgradeWeaponSkillGrowth,
+} from '../domain/growth';
 import type { RewardStack } from '../domain/rewards';
 import { createInitialSave, importSave, SaveFileSchema, type SaveFile } from '../domain/save';
+import type { RewardKind } from '../domain/types';
 
 export const storageKey = 'idle-gbf-save-v1';
 
@@ -24,6 +35,13 @@ type GameContextValue = {
   addMaterial: (itemId: string, quantity: number) => void;
   grantRewards: (rewards: RewardStack[]) => void;
   pullFromGacha: (count: 1 | 10) => GachaPoolItem[];
+  upgradeCharacter: (characterId: string) => void;
+  uncapCharacter: (characterId: string) => void;
+  upgradeWeapon: (weaponId: string) => void;
+  upgradeWeaponSkill: (weaponId: string) => void;
+  uncapWeapon: (weaponId: string) => void;
+  upgradeSummon: (summonId: string) => void;
+  uncapSummon: (summonId: string) => void;
 };
 
 type GameProviderProps = {
@@ -62,6 +80,21 @@ function assertPositiveIntegerRewardQuantity(quantity: number) {
   if (!Number.isInteger(quantity) || quantity <= 0) throw new Error('奖励数量无效');
 }
 
+const materialRewardKinds = new Set<RewardKind>([
+  'material',
+  'characterExp',
+  'weaponExpMaterial',
+  'summonExpMaterial',
+  'weaponSkillMaterial',
+  'characterUncapMaterial',
+  'weaponUncapMaterial',
+  'summonUncapMaterial',
+]);
+
+function isMaterialRewardKind(kind: RewardKind) {
+  return materialRewardKinds.has(kind);
+}
+
 function addRewardsToInventory(save: SaveFile, rewards: RewardStack[]): SaveFile {
   const currencies = { ...save.inventory.currencies };
   const materials = { ...save.inventory.materials };
@@ -72,7 +105,7 @@ function addRewardsToInventory(save: SaveFile, rewards: RewardStack[]): SaveFile
     assertPositiveIntegerRewardQuantity(reward.quantity);
     if (reward.kind === 'currency') {
       currencies[reward.itemId] = (currencies[reward.itemId] ?? 0) + reward.quantity;
-    } else if (reward.kind === 'material') {
+    } else if (isMaterialRewardKind(reward.kind)) {
       materials[reward.itemId] = (materials[reward.itemId] ?? 0) + reward.quantity;
     } else if (reward.kind === 'weapon') {
       if (!weaponIds.includes(reward.itemId)) weaponIds.push(reward.itemId);
@@ -203,8 +236,14 @@ export function GameProvider({ children, now = () => Date.now(), random = Math.r
           }
 
           appliedRewards = settlement.rewards;
+          const rewarded = addRewardsToInventory(current, settlement.rewards);
+          const withCharacterExp = applyCharacterExp(
+            rewarded,
+            rewarded.inventory.characterIds.slice(0, 4),
+            quest.difficulty * 100 * settlement.completedRuns,
+          );
           return {
-            ...addRewardsToInventory(current, settlement.rewards),
+            ...withCharacterExp,
             updatedAt: settledAt,
             activeRun: null,
           };
@@ -294,6 +333,27 @@ export function GameProvider({ children, now = () => Date.now(), random = Math.r
         });
 
         return results;
+      },
+      upgradeCharacter(characterId) {
+        updateSave((current) => ({ ...upgradeCharacterGrowth(current, characterId), updatedAt: now() }));
+      },
+      uncapCharacter(characterId) {
+        updateSave((current) => ({ ...uncapCharacterGrowth(current, characterId), updatedAt: now() }));
+      },
+      upgradeWeapon(weaponId) {
+        updateSave((current) => ({ ...upgradeWeaponGrowth(current, weaponId), updatedAt: now() }));
+      },
+      upgradeWeaponSkill(weaponId) {
+        updateSave((current) => ({ ...upgradeWeaponSkillGrowth(current, weaponId), updatedAt: now() }));
+      },
+      uncapWeapon(weaponId) {
+        updateSave((current) => ({ ...uncapWeaponGrowth(current, weaponId), updatedAt: now() }));
+      },
+      upgradeSummon(summonId) {
+        updateSave((current) => ({ ...upgradeSummonGrowth(current, summonId), updatedAt: now() }));
+      },
+      uncapSummon(summonId) {
+        updateSave((current) => ({ ...uncapSummonGrowth(current, summonId), updatedAt: now() }));
       },
     };
   }, [save, now, random]);

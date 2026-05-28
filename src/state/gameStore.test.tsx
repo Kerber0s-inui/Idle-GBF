@@ -86,7 +86,7 @@ describe('game store', () => {
 
     const exported = result.current.exportCurrentSave();
 
-    expect(JSON.parse(exported).version).toBe(1);
+    expect(JSON.parse(exported).version).toBe(2);
     expect(result.current.save.updatedAt).toBe(before);
   });
 
@@ -110,6 +110,7 @@ describe('game store', () => {
     });
     expect(rewards).toEqual([{ itemId: 'ember-chip', kind: 'material', quantity: 2 }]);
     expect(result.current.save.inventory.materials['ember-chip']).toBe(2);
+    expect(result.current.save.characterStates['char-leya-ember-rail'].exp).toBe(50);
     expect(result.current.save.activeRun).toBeNull();
 
     act(() => {
@@ -194,6 +195,36 @@ describe('game store', () => {
     expect(result.current.save.inventory.currencies.crystal).toBe(300);
     expect(result.current.save.inventory.materials['ember-chip']).toBe(2);
     expect(result.current.save.inventory.summonIds).toContain('summon-helios-engine');
+  });
+
+  it('grants stage 2 material reward kinds into materials', () => {
+    const wrapper = ({ children }: { children: ReactNode }) => <GameProvider now={() => 1000}>{children}</GameProvider>;
+    const { result } = renderHook(() => useGame(), { wrapper });
+
+    act(() =>
+      result.current.grantRewards([
+        { itemId: 'fire-character-uncap', kind: 'characterUncapMaterial', quantity: 1 },
+        { itemId: 'fire-weapon-skill', kind: 'weaponSkillMaterial', quantity: 2 },
+      ]),
+    );
+
+    expect(result.current.save.inventory.materials['fire-character-uncap']).toBe(1);
+    expect(result.current.save.inventory.materials['fire-weapon-skill']).toBe(2);
+  });
+
+  it('upgrades persisted character and weapon states', () => {
+    const wrapper = ({ children }: { children: ReactNode }) => <GameProvider now={() => 1000}>{children}</GameProvider>;
+    const { result } = renderHook(() => useGame(), { wrapper });
+
+    act(() => result.current.addMaterial('fire-character-exp', 1));
+    act(() => result.current.addMaterial('fire-weapon-skill', 1));
+    act(() => result.current.upgradeCharacter('char-leya-ember-rail'));
+    act(() => result.current.upgradeWeaponSkill('weapon-red-rail-saber'));
+
+    expect(result.current.save.characterStates['char-leya-ember-rail'].level).toBe(2);
+    expect(result.current.save.weaponStates['weapon-red-rail-saber'].skillLevel).toBe(2);
+    expect(result.current.save.inventory.materials['fire-character-exp']).toBe(0);
+    expect(result.current.save.inventory.materials['fire-weapon-skill']).toBe(0);
   });
 
   it('rejects invalid reward quantities', () => {

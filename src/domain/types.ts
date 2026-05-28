@@ -10,6 +10,21 @@ export type AttackKind = 'normalAttack' | 'chargeAttack';
 
 export type AssetMode = 'local-gbfal' | 'release-placeholder';
 
+export type QuestKind = 'main' | 'boss' | 'material';
+
+export type RewardKind =
+  | 'material'
+  | 'weapon'
+  | 'summon'
+  | 'currency'
+  | 'characterExp'
+  | 'weaponExpMaterial'
+  | 'summonExpMaterial'
+  | 'weaponSkillMaterial'
+  | 'characterUncapMaterial'
+  | 'weaponUncapMaterial'
+  | 'summonUncapMaterial';
+
 export type Modifier = {
   id: string;
   label: string;
@@ -118,11 +133,25 @@ export type Enemy = {
   normalAttackDamage: number;
   assetKey: string;
   assetMode?: AssetMode;
+  chargeMax?: number;
+  specialActions?: EnemySpecialAction[];
+};
+
+export type EnemySpecialTrigger = { kind: 'hpThreshold'; threshold: number } | { kind: 'chargeFull' };
+
+export type EnemySpecialTarget = { kind: 'single' } | { kind: 'all' } | { kind: 'randomN'; count: number };
+
+export type EnemySpecialAction = {
+  id: string;
+  name: string;
+  trigger: EnemySpecialTrigger;
+  target: EnemySpecialTarget;
+  damageMultiplier: number;
 };
 
 export type RewardTableEntry = {
   itemId: string;
-  kind: 'material' | 'weapon' | 'summon' | 'currency';
+  kind: RewardKind;
   quantity: number;
   chance: number;
 };
@@ -130,6 +159,7 @@ export type RewardTableEntry = {
 export type Quest = {
   id: string;
   name: string;
+  kind: QuestKind;
   element: Element;
   difficulty: number;
   runDurationMs: number;

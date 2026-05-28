@@ -33,7 +33,9 @@ describe('initial content', () => {
     expect(initialWeapons).toHaveLength(2);
     expect(initialSummons).toHaveLength(2);
     expect(initialEnemies).toHaveLength(3);
-    expect(initialQuests).toHaveLength(3);
+    expect(initialQuests.filter((quest) => quest.kind === 'main')).toHaveLength(3);
+    expect(initialQuests.some((quest) => quest.kind === 'boss')).toBe(true);
+    expect(initialQuests.some((quest) => quest.kind === 'material')).toBe(true);
     expect(initialWeapons.some((weapon) => weapon.source === 'farmable')).toBe(true);
     expect(initialSummons.some((summon) => summon.aura.target === 'magna')).toBe(true);
     expect(initialEnemies.every((enemy) => enemy.element === 'wind')).toBe(true);
@@ -61,7 +63,19 @@ describe('initial content', () => {
     const questMain2GachaTicket = initialQuests
       .find((quest) => quest.id === 'quest-main-2')
       ?.firstClearRewards.find((reward) => reward.itemId === 'gacha-ticket');
-    const allowedRewardKinds = new Set(['material', 'weapon', 'summon', 'currency']);
+    const allowedRewardKinds = new Set([
+      'material',
+      'weapon',
+      'summon',
+      'currency',
+      'characterExp',
+      'weaponExpMaterial',
+      'summonExpMaterial',
+      'weaponSkillMaterial',
+      'characterUncapMaterial',
+      'weaponUncapMaterial',
+      'summonUncapMaterial',
+    ]);
 
     expect(initialQuests.every((quest) => Array.isArray(quest.firstClearRewards))).toBe(true);
     expect(initialQuests.every((quest) => Array.isArray(quest.dropTable))).toBe(true);
@@ -82,11 +96,21 @@ describe('initial content', () => {
     const questIds = new Set(initialQuests.map((quest) => quest.id));
     const weaponIds = new Set(initialWeapons.map((weapon) => weapon.id));
     const summonIds = new Set(initialSummons.map((summon) => summon.id));
+    const materialKinds = new Set([
+      'material',
+      'characterExp',
+      'weaponExpMaterial',
+      'summonExpMaterial',
+      'weaponSkillMaterial',
+      'characterUncapMaterial',
+      'weaponUncapMaterial',
+      'summonUncapMaterial',
+    ]);
     const itemExists = (kind: string, itemId: string) =>
       (kind === 'weapon' && weaponIds.has(itemId)) ||
       (kind === 'summon' && summonIds.has(itemId)) ||
       kind === 'currency' ||
-      kind === 'material';
+      materialKinds.has(kind);
 
     expect(initialQuests.every((quest) => enemyIds.has(quest.enemyId))).toBe(true);
     expect(

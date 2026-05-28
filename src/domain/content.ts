@@ -261,6 +261,16 @@ export const initialEnemies: Enemy[] = [
     stats: { hp: 48000, atk: 520, defense: 100 },
     normalAttackDamage: 260,
     assetKey: 'enemy/wind-sentinel-1',
+    chargeMax: 3,
+    specialActions: [
+      {
+        id: 'wind-sentinel-1-charge',
+        name: '涡流穿刺',
+        trigger: { kind: 'chargeFull' },
+        target: { kind: 'single' },
+        damageMultiplier: 1.3,
+      },
+    ],
   },
   {
     id: 'enemy-wind-sentinel-2',
@@ -269,6 +279,23 @@ export const initialEnemies: Enemy[] = [
     stats: { hp: 118000, atk: 980, defense: 112 },
     normalAttackDamage: 540,
     assetKey: 'enemy/wind-sentinel-2',
+    chargeMax: 2,
+    specialActions: [
+      {
+        id: 'wind-sentinel-2-hp-50',
+        name: '裂风阈震',
+        trigger: { kind: 'hpThreshold', threshold: 0.5 },
+        target: { kind: 'all' },
+        damageMultiplier: 1.2,
+      },
+      {
+        id: 'wind-sentinel-2-charge',
+        name: '满豆风压',
+        trigger: { kind: 'chargeFull' },
+        target: { kind: 'single' },
+        damageMultiplier: 1.4,
+      },
+    ],
   },
   {
     id: 'enemy-wind-sentinel-3',
@@ -277,6 +304,30 @@ export const initialEnemies: Enemy[] = [
     stats: { hp: 260000, atk: 1650, defense: 125 },
     normalAttackDamage: 940,
     assetKey: 'enemy/wind-sentinel-3',
+    chargeMax: 2,
+    specialActions: [
+      {
+        id: 'wind-sentinel-3-hp-75',
+        name: '星轨割裂',
+        trigger: { kind: 'hpThreshold', threshold: 0.75 },
+        target: { kind: 'randomN', count: 2 },
+        damageMultiplier: 1.25,
+      },
+      {
+        id: 'wind-sentinel-3-hp-35',
+        name: '断面风暴',
+        trigger: { kind: 'hpThreshold', threshold: 0.35 },
+        target: { kind: 'all' },
+        damageMultiplier: 1.45,
+      },
+      {
+        id: 'wind-sentinel-3-charge',
+        name: '满豆天压',
+        trigger: { kind: 'chargeFull' },
+        target: { kind: 'single' },
+        damageMultiplier: 1.6,
+      },
+    ],
   },
 ];
 
@@ -284,6 +335,7 @@ export const initialQuests: Quest[] = [
   {
     id: 'quest-main-1',
     name: '主线 1：风蚀外缘',
+    kind: 'main',
     element: 'wind',
     difficulty: 1,
     runDurationMs: 5 * 60_000,
@@ -294,6 +346,7 @@ export const initialQuests: Quest[] = [
   {
     id: 'quest-main-2',
     name: '主线 2：裂风回廊',
+    kind: 'main',
     element: 'wind',
     difficulty: 2,
     runDurationMs: 7 * 60_000,
@@ -305,6 +358,7 @@ export const initialQuests: Quest[] = [
   {
     id: 'quest-main-3',
     name: '主线 3：星轨断面',
+    kind: 'main',
     element: 'wind',
     difficulty: 3,
     runDurationMs: 10 * 60_000,
@@ -312,5 +366,39 @@ export const initialQuests: Quest[] = [
     unlockAfterQuestId: 'quest-main-2',
     firstClearRewards: [{ itemId: 'crystal', kind: 'currency', quantity: 600, chance: 1 }],
     dropTable: [{ itemId: 'summon-helios-engine', kind: 'summon', quantity: 1, chance: 0.03 }],
+  },
+  {
+    id: 'quest-boss-wind-1',
+    name: '讨伐：裂风守卫核',
+    kind: 'boss',
+    element: 'wind',
+    difficulty: 2,
+    runDurationMs: 8 * 60_000,
+    enemyId: 'enemy-wind-sentinel-2',
+    unlockAfterQuestId: 'quest-main-1',
+    firstClearRewards: [{ itemId: 'crystal', kind: 'currency', quantity: 200, chance: 1 }],
+    dropTable: [
+      { itemId: 'weapon-furnace-grid-blade', kind: 'weapon', quantity: 1, chance: 0.12 },
+      { itemId: 'summon-helios-engine', kind: 'summon', quantity: 1, chance: 0.03 },
+      { itemId: 'fire-character-uncap', kind: 'characterUncapMaterial', quantity: 1, chance: 0.35 },
+      { itemId: 'fire-weapon-uncap', kind: 'weaponUncapMaterial', quantity: 1, chance: 0.28 },
+      { itemId: 'fire-summon-uncap', kind: 'summonUncapMaterial', quantity: 1, chance: 0.2 },
+    ],
+  },
+  {
+    id: 'quest-material-wind-1',
+    name: '采集：风蚀残响带',
+    kind: 'material',
+    element: 'wind',
+    difficulty: 1,
+    runDurationMs: 6 * 60_000,
+    enemyId: 'enemy-wind-sentinel-1',
+    unlockAfterQuestId: 'quest-main-1',
+    firstClearRewards: [{ itemId: 'gacha-ticket', kind: 'currency', quantity: 1, chance: 1 }],
+    dropTable: [
+      { itemId: 'fire-weapon-exp', kind: 'weaponExpMaterial', quantity: 2, chance: 0.85 },
+      { itemId: 'fire-summon-exp', kind: 'summonExpMaterial', quantity: 2, chance: 0.85 },
+      { itemId: 'fire-weapon-skill', kind: 'weaponSkillMaterial', quantity: 1, chance: 0.45 },
+    ],
   },
 ];

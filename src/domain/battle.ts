@@ -1,16 +1,34 @@
-import type { Character, Enemy, Modifier, PartyLoadout, Summon, Weapon } from './types';
+import type { Character, Enemy, EnemySpecialTarget, Modifier, PartyLoadout, Summon, Weapon } from './types';
 import { calculateAttackBreakdown, calculateChargeGain, rollMultiattack } from './formula';
 
 const SAFETY_TURN_LIMIT = 200;
 
 export interface BattleEvent {
-  kind: 'normalAttack' | 'chargeAttack' | 'enemyAttack' | 'passive';
+  kind: 'normalAttack' | 'chargeAttack' | 'enemyAttack' | 'specialAttack' | 'fallen' | 'passive';
+  phase?: 'player' | 'enemy' | 'system';
   actor: string;
   target?: string;
   label: string;
+  message?: string;
   damage?: number;
   hitCount?: number;
   chargeGain?: number;
+  snapshot?: {
+    actor?: BattleSnapshotUnit;
+    target?: BattleSnapshotUnit;
+    boss?: BattleSnapshotUnit;
+    targets?: BattleSnapshotUnit[];
+  };
+}
+
+export interface BattleSnapshotUnit {
+  id?: string;
+  name: string;
+  hp: number;
+  maxHp?: number;
+  atk: number;
+  defense: number;
+  charge?: number;
 }
 
 export interface BattleTurn {
@@ -93,6 +111,91 @@ function createElementAdvantageModifier(elementalAttack: number): Modifier {
   };
 }
 
+function createCharacterSnapshot(input: {
+  character: Character;
+  hp: number;
+  maxHp: number;
+  charge: number;
+  sharedWeaponAttack: number;
+  modifiers: Modifier[];
+}) {
+  const defenseModifier = sumModifiers(input.modifiers, 'defense');
+
+  return {
+    id: input.character.id,
+    name: input.character.name,
+    hp: Math.max(0, Math.floor(input.hp)),
+    maxHp: Math.max(1, Math.floor(input.maxHp)),
+    atk: Math.max(0, Math.floor(input.character.stats.atk + input.sharedWeaponAttack)),
+    defense: Math.max(0, Math.floor(input.character.stats.defense * (1 + defenseModifier))),
+    charge: Math.max(0, Math.floor(input.charge)),
+  };
+}
+
+function createBossSnapshot(enemy: Enemy, hp: number, maxHp: number, charge: number) {
+  return {
+    id: enemy.id,
+    name: enemy.name,
+    hp: Math.max(0, Math.floor(hp)),
+    maxHp: Math.max(1, Math.floor(maxHp)),
+    atk: Math.max(0, Math.floor(enemy.stats.atk)),
+    defense: Math.max(0, Math.floor(enemy.stats.defense)),
+    charge: Math.max(0, Math.floor(charge)),
+  };
+}
+
+function targetLabel(targets: Character[]) {
+  if (targets.length === 0) return '无人';
+  if (targets.length > 1) return '我方全体';
+  return targets[0].name;
+}
+
+function chooseTargets(input: { target: EnemySpecialTarget; aliveParty: Character[]; random: () => number }) {
+  if (input.target.kind === 'all') return input.aliveParty;
+  if (input.aliveParty.length === 0) return [];
+  if (input.target.kind === 'single') {
+    const index = Math.min(input.aliveParty.length - 1, Math.floor(input.random() * input.aliveParty.length));
+    return [input.aliveParty[index]];
+  }
+
+  const remaining = [...input.aliveParty];
+  const chosen: Character[] = [];
+  const count = Math.min(input.target.count, remaining.length);
+  for (let index = 0; index < count; index += 1) {
+    const targetIndex = Math.min(remaining.length - 1, Math.floor(input.random() * remaining.length));
+    const [target] = remaining.splice(targetIndex, 1);
+    chosen.push(target);
+  }
+  return chosen;
+}
+
+function selectSpecialAction(input: {
+  enemy: Enemy;
+  enemyHp: number;
+  maxEnemyHp: number;
+  bossCharge: number;
+  triggeredThresholdIds: Set<string>;
+}) {
+  const actions = input.enemy.specialActions ?? [];
+  const hpRatio = input.enemyHp / Math.max(1, input.maxEnemyHp);
+  const hpSpecial = actions.find(
+    (action) =>
+      action.trigger.kind === 'hpThreshold' &&
+      hpRatio <= action.trigger.threshold &&
+      !input.triggeredThresholdIds.has(action.id),
+  );
+  if (hpSpecial) return hpSpecial;
+
+  const chargeMax = input.enemy.chargeMax ?? Number.POSITIVE_INFINITY;
+  return actions.find((action) => action.trigger.kind === 'chargeFull' && input.bossCharge > chargeMax) ?? null;
+}
+
+function enemyDamageToTarget(input: { enemy: Enemy; target: Character; party: Character[]; gridWeapons: Weapon[]; multiplier: number }) {
+  const modifiers = getCharacterModifiers(input.target, input.party, input.gridWeapons);
+  const defenseModifier = sumModifiers(modifiers, 'defense');
+  return Math.max(1, Math.floor((input.enemy.normalAttackDamage * input.multiplier) / (1 + defenseModifier)));
+}
+
 export function simulateBattle(input: SimulateBattleInput): BattleResult {
   const party = input.loadout.characterIds
     .map((id) => input.characters.find((character) => character.id === id))
@@ -114,7 +217,10 @@ export function simulateBattle(input: SimulateBattleInput): BattleResult {
   ) as Record<string, number>;
   const partyHp = { ...maxPartyHp };
   const charge = Object.fromEntries(party.map((character) => [character.id, 70])) as Record<string, number>;
+  const maxEnemyHp = input.enemy.stats.hp;
   let enemyHp = input.enemy.stats.hp;
+  let bossCharge = 0;
+  const triggeredThresholdIds = new Set<string>();
   const turns: BattleTurn[] = [];
 
   for (let turn = 1; turn <= SAFETY_TURN_LIMIT; turn += 1) {
@@ -129,6 +235,15 @@ export function simulateBattle(input: SimulateBattleInput): BattleResult {
       const chargeGainModifier = sumModifiers(modifiers, 'chargeGain');
       const doubleAttackRate = sumModifiers(modifiers, 'doubleAttackRate');
       const tripleAttackRate = sumModifiers(modifiers, 'tripleAttackRate');
+      const actorSnapshot = () =>
+        createCharacterSnapshot({
+          character,
+          hp: partyHp[character.id],
+          maxHp: maxPartyHp[character.id],
+          charge: charge[character.id],
+          sharedWeaponAttack,
+          modifiers,
+        });
 
       if (charge[character.id] >= character.chargeAttack.chargeCost) {
         const breakdown = calculateAttackBreakdown({
@@ -145,9 +260,21 @@ export function simulateBattle(input: SimulateBattleInput): BattleResult {
         const cap = character.chargeAttack.cap * (1 + chargeCapModifier + damageCapModifier);
         const uncappedDamage = breakdown.finalAttack * character.chargeAttack.multiplier * (1 + chargeDamageModifier);
         const damage = Math.max(1, Math.floor(Math.min(uncappedDamage, cap)));
-        enemyHp -= damage;
+        enemyHp = Math.max(0, enemyHp - damage);
         charge[character.id] = 0;
-        events.push({ kind: 'chargeAttack', actor: character.name, target: input.enemy.name, label: character.chargeAttack.name, damage });
+        events.push({
+          kind: 'chargeAttack',
+          phase: 'player',
+          actor: character.name,
+          target: input.enemy.name,
+          label: character.chargeAttack.name,
+          message: `${character.name}发动奥义对${input.enemy.name}造成了 ${damage} 伤害`,
+          damage,
+          snapshot: {
+            actor: actorSnapshot(),
+            boss: createBossSnapshot(input.enemy, enemyHp, maxEnemyHp, bossCharge),
+          },
+        });
       } else {
         const multiattack = rollMultiattack({ doubleAttackRate, tripleAttackRate, random: input.random });
         const breakdown = calculateAttackBreakdown({
@@ -160,16 +287,22 @@ export function simulateBattle(input: SimulateBattleInput): BattleResult {
         });
         const damage = Math.max(1, Math.floor((breakdown.finalAttack / 8) * multiattack.hitCount));
         const chargeGain = calculateChargeGain({ baseGain: 10, hitCount: multiattack.hitCount, chargeGainModifier });
-        enemyHp -= damage;
+        enemyHp = Math.max(0, enemyHp - damage);
         charge[character.id] += chargeGain;
         events.push({
           kind: 'normalAttack',
+          phase: 'player',
           actor: character.name,
           target: input.enemy.name,
           label: multiattack.kind.toUpperCase(),
+          message: `${character.name}对${input.enemy.name}造成了 ${damage} 伤害`,
           damage,
           hitCount: multiattack.hitCount,
-          chargeGain
+          chargeGain,
+          snapshot: {
+            actor: actorSnapshot(),
+            boss: createBossSnapshot(input.enemy, enemyHp, maxEnemyHp, bossCharge),
+          },
         });
       }
     }
@@ -179,13 +312,115 @@ export function simulateBattle(input: SimulateBattleInput): BattleResult {
       return { outcome: 'win', summary: '胜利', turns, finalEnemyHp: 0, finalPartyHp: partyHp };
     }
 
-    const aliveParty = party.filter((character) => partyHp[character.id] > 0);
-    for (const character of aliveParty) {
-      const modifiers = getCharacterModifiers(character, party, gridWeapons);
-      const defenseModifier = sumModifiers(modifiers, 'defense');
-      const damage = Math.max(1, Math.floor(input.enemy.normalAttackDamage / (1 + defenseModifier)));
-      partyHp[character.id] = Math.max(0, partyHp[character.id] - damage);
-      events.push({ kind: 'enemyAttack', actor: input.enemy.name, target: character.name, label: '普通攻击', damage });
+    const alivePartyBeforeEnemyAction = party.filter((character) => partyHp[character.id] > 0);
+    const hpBeforeEnemyAction = { ...partyHp };
+    const specialAction = selectSpecialAction({
+      enemy: input.enemy,
+      enemyHp,
+      maxEnemyHp,
+      bossCharge,
+      triggeredThresholdIds,
+    });
+
+    if (specialAction) {
+      if (specialAction.trigger.kind === 'hpThreshold') triggeredThresholdIds.add(specialAction.id);
+      const targets = chooseTargets({ target: specialAction.target, aliveParty: alivePartyBeforeEnemyAction, random: input.random });
+      const targetSnapshots: BattleSnapshotUnit[] = [];
+      let totalDamage = 0;
+
+      for (const target of targets) {
+        const damage = enemyDamageToTarget({
+          enemy: input.enemy,
+          target,
+          party,
+          gridWeapons,
+          multiplier: specialAction.damageMultiplier,
+        });
+        partyHp[target.id] = Math.max(0, partyHp[target.id] - damage);
+        totalDamage += damage;
+        targetSnapshots.push(
+          createCharacterSnapshot({
+            character: target,
+            hp: partyHp[target.id],
+            maxHp: maxPartyHp[target.id],
+            charge: charge[target.id],
+            sharedWeaponAttack,
+            modifiers: getCharacterModifiers(target, party, gridWeapons),
+          }),
+        );
+      }
+
+      bossCharge = 0;
+      events.push({
+        kind: 'specialAttack',
+        phase: 'enemy',
+        actor: input.enemy.name,
+        target: targetLabel(targets),
+        label: specialAction.name,
+        message: `${input.enemy.name}发动特动对${targetLabel(targets)}造成了 ${totalDamage} 伤害`,
+        damage: totalDamage,
+        snapshot: {
+          boss: createBossSnapshot(input.enemy, enemyHp, maxEnemyHp, bossCharge),
+          targets: targetSnapshots,
+          target: targetSnapshots[0],
+        },
+      });
+    } else {
+      let totalDamage = 0;
+      const targetSnapshots: BattleSnapshotUnit[] = [];
+      for (const character of alivePartyBeforeEnemyAction) {
+        const damage = enemyDamageToTarget({ enemy: input.enemy, target: character, party, gridWeapons, multiplier: 1 });
+        partyHp[character.id] = Math.max(0, partyHp[character.id] - damage);
+        totalDamage += damage;
+        targetSnapshots.push(
+          createCharacterSnapshot({
+            character,
+            hp: partyHp[character.id],
+            maxHp: maxPartyHp[character.id],
+            charge: charge[character.id],
+            sharedWeaponAttack,
+            modifiers: getCharacterModifiers(character, party, gridWeapons),
+          }),
+        );
+      }
+      bossCharge += 1;
+      events.push({
+        kind: 'enemyAttack',
+        phase: 'enemy',
+        actor: input.enemy.name,
+        target: targetLabel(alivePartyBeforeEnemyAction),
+        label: '普通攻击',
+        message: `${input.enemy.name}对${targetLabel(alivePartyBeforeEnemyAction)}造成了 ${totalDamage} 伤害`,
+        damage: totalDamage,
+        snapshot: {
+          boss: createBossSnapshot(input.enemy, enemyHp, maxEnemyHp, bossCharge),
+          targets: targetSnapshots,
+          target: targetSnapshots[0],
+        },
+      });
+    }
+
+    for (const character of party) {
+      if (hpBeforeEnemyAction[character.id] > 0 && partyHp[character.id] <= 0) {
+        events.push({
+          kind: 'fallen',
+          phase: 'system',
+          actor: character.name,
+          label: '倒下',
+          message: `${character.name}倒下了`,
+          snapshot: {
+            actor: createCharacterSnapshot({
+              character,
+              hp: partyHp[character.id],
+              maxHp: maxPartyHp[character.id],
+              charge: charge[character.id],
+              sharedWeaponAttack,
+              modifiers: getCharacterModifiers(character, party, gridWeapons),
+            }),
+            boss: createBossSnapshot(input.enemy, enemyHp, maxEnemyHp, bossCharge),
+          },
+        });
+      }
     }
 
     turns.push({ turn, events });

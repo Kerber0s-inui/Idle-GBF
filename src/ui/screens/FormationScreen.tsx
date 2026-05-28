@@ -1,5 +1,6 @@
 import { initialCharacters, initialSummons, initialWeapons } from '../../domain/content';
 import { calculateAttackBreakdown } from '../../domain/formula';
+import { createSummonGrid, createWeaponGrid, type FormationSlot } from '../../domain/formation';
 import type { Modifier } from '../../domain/types';
 import { useGame } from '../../state/gameStore';
 import { IconBadge } from '../components/IconBadge';
@@ -7,6 +8,12 @@ import { StatBreakdown } from '../components/StatBreakdown';
 
 function percent(value: number) {
   return `${Math.round(value * 100)}%`;
+}
+
+function findSlotName(slot: FormationSlot, kind: 'weapon' | 'summon') {
+  if (!slot.itemId) return '空';
+  const source = kind === 'weapon' ? initialWeapons : initialSummons;
+  return source.find((item) => item.id === slot.itemId)?.name ?? slot.itemId;
 }
 
 export function FormationScreen() {
@@ -21,6 +28,8 @@ export function FormationScreen() {
   const summons = save.inventory.summonIds
     .map((id) => initialSummons.find((summon) => summon.id === id))
     .filter(Boolean);
+  const weaponGrid = createWeaponGrid(save.inventory.weaponIds);
+  const summonGrid = createSummonGrid(save.inventory.summonIds);
   const modifiers = weapons.flatMap((weapon) => weapon?.skills.flatMap((skill) => skill.modifiers) ?? []) as Modifier[];
   const magnaBoost = summons.filter((summon) => summon?.aura.target === 'magna').reduce((total, summon) => total + (summon?.aura.boost ?? 0), 0);
   const normalBoost = summons.filter((summon) => summon?.aura.target === 'normal').reduce((total, summon) => total + (summon?.aura.boost ?? 0), 0);
@@ -56,7 +65,7 @@ export function FormationScreen() {
               <div>
                 <strong>{character?.name}</strong>
                 <span>
-                  {character?.rarity} Lv.{character?.level}
+                  {character?.rarity} Lv.{save.characterStates[character?.id ?? '']?.level ?? character?.level}
                 </span>
               </div>
             </div>
@@ -66,13 +75,47 @@ export function FormationScreen() {
 
       <section className="panel content-panel">
         <h2>武器与召唤</h2>
-        <div className="stat-row">
-          <span>武器盘</span>
-          <strong>{weapons.length} 件</strong>
+        <div>
+          <div className="grid-title">
+            <span>武器盘</span>
+            <strong>1 + 9</strong>
+          </div>
+          <div className="equipment-grid weapon-grid">
+            {weaponGrid.slots.map((slot) => {
+              const name = findSlotName(slot, 'weapon');
+              const state = slot.itemId ? save.weaponStates[slot.itemId] : null;
+
+              return (
+                <div className={slot.kind === 'empty' ? 'equipment-slot empty-slot' : 'equipment-slot'} data-testid="weapon-grid-slot" key={slot.index}>
+                  {slot.kind === 'empty' ? <span aria-hidden="true" className="icon-badge">+</span> : <IconBadge label={name} />}
+                  <span>{slot.role === 'main' ? '主手' : `副${slot.index}`}</span>
+                  <strong>{slot.kind === 'empty' ? '空' : name}</strong>
+                  {state ? <small>Lv.{state.level}/SLv.{state.skillLevel}</small> : null}
+                </div>
+              );
+            })}
+          </div>
         </div>
-        <div className="stat-row">
-          <span>召唤石</span>
-          <strong>{summons.map((summon) => summon?.name).join(' / ')}</strong>
+        <div>
+          <div className="grid-title">
+            <span>召唤石</span>
+            <strong>1 + 4</strong>
+          </div>
+          <div className="equipment-grid summon-grid">
+            {summonGrid.slots.map((slot) => {
+              const name = findSlotName(slot, 'summon');
+              const state = slot.itemId ? save.summonStates[slot.itemId] : null;
+
+              return (
+                <div className={slot.kind === 'empty' ? 'equipment-slot empty-slot' : 'equipment-slot'} data-testid="summon-grid-slot" key={slot.index}>
+                  {slot.kind === 'empty' ? <span aria-hidden="true" className="icon-badge">+</span> : <IconBadge label={name} />}
+                  <span>{slot.role === 'main' ? '主召' : `副${slot.index}`}</span>
+                  <strong>{slot.kind === 'empty' ? '空' : name}</strong>
+                  {state ? <small>Lv.{state.level}</small> : null}
+                </div>
+              );
+            })}
+          </div>
         </div>
       </section>
 

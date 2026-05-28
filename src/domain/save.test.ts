@@ -13,7 +13,7 @@ describe('save', () => {
     const json = exportSave(save);
     const imported = importSave(json);
 
-    expect(imported.version).toBe(1);
+    expect(imported.version).toBe(2);
     expect(imported.createdAt).toBe(1234);
   });
 

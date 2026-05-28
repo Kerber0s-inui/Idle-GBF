@@ -39,7 +39,7 @@ describe('mvp screens', () => {
 
   it('previews upgrades without spending materials', async () => {
     const save = createInitialSave(1000);
-    save.inventory.materials['ember-chip'] = 1;
+    save.inventory.materials['fire-character-exp'] = 1;
     localStorage.setItem(storageKey, exportSave(save));
 
     render(
@@ -49,9 +49,41 @@ describe('mvp screens', () => {
     );
 
     await userEvent.click(screen.getByRole('button', { name: '强化' }));
-    await userEvent.click(screen.getAllByRole('button', { name: '预览强化' })[0]);
+    await userEvent.click(screen.getAllByRole('button', { name: '升级角色' })[0]);
 
-    expect(screen.getByText('1')).toBeInTheDocument();
-    expect(screen.getByText('需要余烬碎片 x1，等级成长将在后续版本持久化')).toBeInTheDocument();
+    expect(screen.getByText(/Lv\.2\/80/)).toBeInTheDocument();
+    expect(screen.getByText('角色升级完成')).toBeInTheDocument();
+  });
+
+  it('shows freely selectable quest groups and structured first-clear logs', async () => {
+    render(
+      <GameProvider now={() => 1000}>
+        <AppShell />
+      </GameProvider>,
+    );
+
+    expect(screen.getByRole('heading', { name: '主线副本' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Boss 本' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: '材料本' })).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: /主线 1/ }));
+    await userEvent.click(screen.getByRole('button', { name: '开始首通' }));
+
+    expect(screen.getAllByText(/造成了 \d+ 伤害/).length).toBeGreaterThan(0);
+    expect(screen.getAllByText('展开')[0]).toBeInTheDocument();
+  });
+
+  it('renders 1+9 weapon and 1+4 summon grids with empty slots', async () => {
+    render(
+      <GameProvider now={() => 1000}>
+        <AppShell />
+      </GameProvider>,
+    );
+
+    await userEvent.click(screen.getByRole('button', { name: '编成' }));
+
+    expect(screen.getAllByTestId('weapon-grid-slot')).toHaveLength(10);
+    expect(screen.getAllByTestId('summon-grid-slot')).toHaveLength(5);
+    expect(screen.getAllByText('空')).toHaveLength(11);
   });
 });

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { simulateBattle } from '../../domain/battle';
+import { simulateBattle, type BattleEvent } from '../../domain/battle';
 import { initialCharacters, initialEnemies, initialQuests, initialSummons, initialWeapons } from '../../domain/content';
 import type { RewardStack } from '../../domain/rewards';
 import type { PartyLoadout, Quest } from '../../domain/types';
@@ -16,8 +16,9 @@ function findRouteQuest(clearedQuestIds: string[]) {
   return (
     initialQuests.find((quest) => {
       if (clearedQuestIds.includes(quest.id)) return false;
+      if (quest.kind !== 'main') return false;
       return !quest.unlockAfterQuestId || clearedQuestIds.includes(quest.unlockAfterQuestId);
-    }) ?? initialQuests.find((quest) => clearedQuestIds.includes(quest.id)) ?? initialQuests[0]
+    }) ?? initialQuests.find((quest) => quest.kind === 'main' && clearedQuestIds.includes(quest.id)) ?? initialQuests[0]
   );
 }
 
@@ -48,15 +49,29 @@ function summarizeBattle(quest: Quest, save: ReturnType<typeof useGame>['save'])
 
   return {
     result,
-    lines: result.turns.flatMap((turn) =>
-      turn.events.slice(0, 4).map((event) => `第 ${turn.turn} 回合：${event.actor} ${event.label} ${event.damage ?? 0}`),
+    events: result.turns.flatMap((turn) =>
+      turn.events.slice(0, 5).map((event) => ({
+        ...event,
+        message: event.message ? `第 ${turn.turn} 回合：${event.message}` : `第 ${turn.turn} 回合：${event.actor} ${event.label}`,
+      })),
     ),
   };
+}
+
+const questGroups = [
+  { kind: 'main' as const, title: '主线副本' },
+  { kind: 'boss' as const, title: 'Boss 本' },
+  { kind: 'material' as const, title: '材料本' },
+];
+
+function isQuestUnlocked(quest: Quest, clearedQuestIds: string[]) {
+  return !quest.unlockAfterQuestId || clearedQuestIds.includes(quest.unlockAfterQuestId);
 }
 
 export function ExpeditionScreen() {
   const { save, markQuestCleared, grantRewards, startSweep, settleActiveSweep, getSweepProgress } = useGame();
   const [battleLines, setBattleLines] = useState<string[]>([]);
+  const [battleEvents, setBattleEvents] = useState<BattleEvent[]>([]);
   const [lastRewards, setLastRewards] = useState<RewardStack[]>([]);
   const [sweepCount, setSweepCount] = useState(10);
   const [message, setMessage] = useState('');
@@ -73,7 +88,8 @@ export function ExpeditionScreen() {
     setLastRewards([]);
     try {
       const battle = summarizeBattle(targetQuest, save);
-      setBattleLines(battle.lines);
+      setBattleLines([]);
+      setBattleEvents(battle.events);
       if (battle.result.outcome === 'win') {
         const rewards = targetQuest.firstClearRewards.map((reward) => ({
           itemId: reward.itemId,
@@ -98,6 +114,8 @@ export function ExpeditionScreen() {
     try {
       startSweep(targetQuest.id, sweepCount);
       setMessage('扫荡已开始');
+      setBattleEvents([]);
+      setBattleLines([`开始扫荡 ${targetQuest.name} x${sweepCount}`]);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : '无法开始扫荡');
     }
@@ -107,6 +125,8 @@ export function ExpeditionScreen() {
     const rewards = settleActiveSweep();
     setLastRewards(rewards);
     setMessage(rewards.length > 0 ? '扫荡结算完成' : '扫荡尚未完成');
+    setBattleEvents([]);
+    setBattleLines(rewards.length > 0 ? [`扫荡结算：${targetQuest.name} 获得 ${rewards.length} 类奖励`] : ['扫荡进行中，暂无结算']);
   };
 
   const handleContinueRoute = () => {
@@ -114,6 +134,7 @@ export function ExpeditionScreen() {
     setMessage('已切回主线进度');
     setLastRewards([]);
     setBattleLines([]);
+    setBattleEvents([]);
   };
 
   return (
@@ -137,6 +158,47 @@ export function ExpeditionScreen() {
           <strong>{save.activeRun ? `进行中 ${progress?.completedRuns ?? 0}/${save.activeRun.totalRuns}` : '待命'}</strong>
         </div>
       </div>
+
+      <section className="panel content-panel">
+        {questGroups.map((group) => (
+          <div className="quest-group" key={group.kind}>
+            <h2>{group.title}</h2>
+            <div className="row-list">
+              {initialQuests
+                .filter((quest) => quest.kind === group.kind)
+                .map((quest) => {
+                  const unlocked = isQuestUnlocked(quest, save.progress.clearedQuestIds);
+                  const cleared = save.progress.clearedQuestIds.includes(quest.id);
+                  const selected = targetQuest.id === quest.id;
+
+                  return (
+                    <button
+                      aria-pressed={selected}
+                      className={selected ? 'quest-button selected' : 'quest-button'}
+                      disabled={!unlocked || Boolean(save.activeRun)}
+                      key={quest.id}
+                      type="button"
+                      onClick={() => {
+                        setSelectedQuestId(quest.id);
+                        setMessage('');
+                        setBattleLines([]);
+                        setBattleEvents([]);
+                      }}
+                    >
+                      <IconBadge label={quest.name} />
+                      <span>
+                        <strong>{quest.name}</strong>
+                        <small>
+                          难度 {quest.difficulty} / {formatMinutes(quest.runDurationMs)} / {cleared ? '已首通' : unlocked ? '可挑战' : '未解锁'}
+                        </small>
+                      </span>
+                    </button>
+                  );
+                })}
+            </div>
+          </div>
+        ))}
+      </section>
 
       <section className="panel content-panel">
         <div className="list-item">
@@ -179,7 +241,7 @@ export function ExpeditionScreen() {
         </div>
         {message ? <p className="status-text">{message}</p> : null}
         <RewardSummary rewards={lastRewards} />
-        <BattleLog lines={battleLines} />
+        <BattleLog events={battleEvents} lines={battleLines} />
       </section>
     </>
   );
