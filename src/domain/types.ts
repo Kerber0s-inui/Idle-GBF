@@ -2,16 +2,17 @@ export type Element = 'fire' | 'water' | 'earth' | 'wind' | 'light' | 'dark';
 
 export type Rarity = 'R' | 'SR' | 'SSR';
 
-export type WeaponSource = 'story' | 'farmable' | 'gacha' | 'event';
+export type WeaponSource = 'story' | 'farmable' | 'gacha';
 
-export type SkillCategory = 'normal' | 'magna' | 'elemental' | 'unknown' | 'ex';
+export type SkillCategory = 'normal' | 'magna' | 'ex' | 'elemental' | 'independent';
 
-export type AttackKind = 'normal' | 'charge';
+export type AttackKind = 'normalAttack' | 'chargeAttack';
 
-export type AssetMode = 'static' | 'animated';
+export type AssetMode = 'local-gbfal' | 'release-placeholder';
 
 export type Modifier = {
   id: string;
+  label: string;
   type:
     | 'attack'
     | 'hp'
@@ -33,7 +34,7 @@ export type Modifier = {
     | 'startingCharge';
   value: number;
   category?: SkillCategory;
-  source: 'character' | 'weapon' | 'summon' | 'quest' | 'system';
+  source: 'character' | 'weapon' | 'summon';
 };
 
 export type StatBlock = {
@@ -45,7 +46,8 @@ export type StatBlock = {
 export type Passive = {
   id: string;
   name: string;
-  modifier: Modifier;
+  description: string;
+  modifiers: Modifier[];
 };
 
 export type ChargeAttack = {
@@ -61,6 +63,8 @@ export type Character = {
   name: string;
   element: Element;
   rarity: Rarity;
+  level: number;
+  maxLevel: number;
   stats: StatBlock;
   assetKey: string;
   assetMode?: AssetMode;
@@ -71,7 +75,8 @@ export type Character = {
 export type WeaponSkill = {
   id: string;
   name: string;
-  modifier: Modifier;
+  level: number;
+  modifiers: Modifier[];
 };
 
 export type Weapon = {
@@ -93,6 +98,8 @@ export type Summon = {
   name: string;
   element: Element;
   rarity: Rarity;
+  level: number;
+  maxLevel: number;
   stats: StatBlock;
   aura: {
     label: string;
@@ -115,6 +122,8 @@ export type Enemy = {
 
 export type RewardTableEntry = {
   itemId: string;
+  kind: 'currency' | 'ticket' | 'weapon' | 'summon';
+  quantity: number;
   chance: number;
 };
 
@@ -126,20 +135,18 @@ export type Quest = {
   runDurationMs: number;
   enemyId: string;
   unlockAfterQuestId?: string;
-  firstClear: {
-    itemId: string;
-    quantity: number;
-  };
-  drops: RewardTableEntry[];
+  firstClearRewards: RewardTableEntry[];
+  dropTable: RewardTableEntry[];
 };
 
 export type WeaponGrid = {
-  mainHandWeaponId: string;
+  mainWeaponId: string;
   weaponIds: string[];
 };
 
 export type PartyLoadout = {
   characterIds: string[];
   weaponGrid: WeaponGrid;
-  summonId: string;
+  mainSummonId: string;
+  supportSummonId?: string;
 };
