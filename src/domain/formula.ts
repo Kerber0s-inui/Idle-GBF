@@ -10,6 +10,7 @@ export interface AttackBreakdownInput {
 }
 
 export interface AttackBreakdown {
+  attackKind: AttackKind;
   finalAttack: number;
   sections: {
     normal: number;
@@ -35,11 +36,15 @@ export interface CappedModifiers {
 function sumModifiers(modifiers: Modifier[], type: Modifier['type'], category?: Modifier['category']) {
   return modifiers
     .filter((modifier) => modifier.type === type && (category === undefined || modifier.category === category))
-    .reduce((total, modifier) => total + modifier.value, 0);
+    .reduce((total, modifier) => total + toFiniteNumber(modifier.value), 0);
+}
+
+function toFiniteNumber(value: number, fallback = 0) {
+  return Number.isFinite(value) ? value : fallback;
 }
 
 function clamp(value: number, min: number, max: number) {
-  return Math.min(max, Math.max(min, value));
+  return Math.min(max, Math.max(min, toFiniteNumber(value)));
 }
 
 export function clampModifierCaps(input: CappedModifiers): CappedModifiers {
@@ -55,16 +60,17 @@ export function clampModifierCaps(input: CappedModifiers): CappedModifiers {
 }
 
 export function calculateAttackBreakdown(input: AttackBreakdownInput): AttackBreakdown {
-  const normal = sumModifiers(input.modifiers, 'attack', 'normal') * (1 + input.normalBoost);
-  const magna = sumModifiers(input.modifiers, 'attack', 'magna') * (1 + input.magnaBoost);
+  const normal = sumModifiers(input.modifiers, 'attack', 'normal') * (1 + toFiniteNumber(input.normalBoost));
+  const magna = sumModifiers(input.modifiers, 'attack', 'magna') * (1 + toFiniteNumber(input.magnaBoost));
   const ex = sumModifiers(input.modifiers, 'attack', 'ex');
   const elemental = sumModifiers(input.modifiers, 'attack', 'elemental');
   const independent = sumModifiers(input.modifiers, 'attack', 'independent');
-  const stamina = sumModifiers(input.modifiers, 'stamina') * Math.max(0, input.hpRatio);
-  const enmity = sumModifiers(input.modifiers, 'enmity') * Math.max(0, 1 - input.hpRatio);
+  const hpRatio = clamp(input.hpRatio, 0, 1);
+  const stamina = sumModifiers(input.modifiers, 'stamina') * hpRatio;
+  const enmity = sumModifiers(input.modifiers, 'enmity') * (1 - hpRatio);
 
   const finalAttack =
-    input.baseAttack *
+    toFiniteNumber(input.baseAttack) *
     (1 + normal) *
     (1 + magna) *
     (1 + ex) *
@@ -72,19 +78,23 @@ export function calculateAttackBreakdown(input: AttackBreakdownInput): AttackBre
     (1 + independent) *
     (1 + stamina + enmity);
 
-  return { finalAttack, sections: { normal, magna, ex, elemental, independent, stamina, enmity } };
+  return { attackKind: input.attackKind, finalAttack, sections: { normal, magna, ex, elemental, independent, stamina, enmity } };
 }
 
 export function calculateChargeGain(input: { baseGain: number; hitCount: number; chargeGainModifier: number }) {
-  return input.baseGain * input.hitCount * (1 + input.chargeGainModifier);
+  const baseGain = Math.max(0, toFiniteNumber(input.baseGain));
+  const hitCount = Math.max(0, toFiniteNumber(input.hitCount));
+  const chargeGainModifier = Math.max(-1, toFiniteNumber(input.chargeGainModifier));
+
+  return baseGain * hitCount * (1 + chargeGainModifier);
 }
 
 export function rollMultiattack(input: { doubleAttackRate: number; tripleAttackRate: number; random: () => number }) {
   const tripleAttackRate = clamp(input.tripleAttackRate, 0, 1);
   const doubleAttackRate = clamp(input.doubleAttackRate, 0, 1);
-  const firstRoll = input.random();
+  const firstRoll = toFiniteNumber(input.random(), 1);
   if (firstRoll < tripleAttackRate) return { kind: 'ta' as const, hitCount: 3 };
-  const secondRoll = input.random();
+  const secondRoll = toFiniteNumber(input.random(), 1);
   if (secondRoll < doubleAttackRate) return { kind: 'da' as const, hitCount: 2 };
   return { kind: 'sa' as const, hitCount: 1 };
 }
