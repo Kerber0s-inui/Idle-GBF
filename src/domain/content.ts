@@ -7,7 +7,7 @@ export const initialCharacters: Character[] = [
     element: 'fire',
     rarity: 'SSR',
     level: 1,
-    maxLevel: 80,
+    maxLevel: 150,
     stats: { hp: 1180, atk: 780, defense: 100 },
     assetKey: 'character/leya-ember-rail',
     passives: [
@@ -49,7 +49,7 @@ export const initialCharacters: Character[] = [
     element: 'fire',
     rarity: 'SR',
     level: 1,
-    maxLevel: 70,
+    maxLevel: 150,
     stats: { hp: 1320, atk: 610, defense: 112 },
     assetKey: 'character/caro-furnace',
     passives: [
@@ -91,7 +91,7 @@ export const initialCharacters: Character[] = [
     element: 'fire',
     rarity: 'SSR',
     level: 1,
-    maxLevel: 80,
+    maxLevel: 150,
     stats: { hp: 1040, atk: 840, defense: 92 },
     assetKey: 'character/mira-astral-circuit',
     passives: [
@@ -132,7 +132,7 @@ export const initialCharacters: Character[] = [
     element: 'fire',
     rarity: 'SR',
     level: 1,
-    maxLevel: 70,
+    maxLevel: 150,
     stats: { hp: 980, atk: 690, defense: 88 },
     assetKey: 'character/noin-ash-protocol',
     passives: [
@@ -177,7 +177,7 @@ export const initialWeapons: Weapon[] = [
     rarity: 'SSR',
     source: 'story',
     level: 1,
-    maxLevel: 100,
+    maxLevel: 150,
     stats: { hp: 120, atk: 410, defense: 0 },
     assetKey: 'weapon/red-rail-saber',
     skills: [
@@ -205,7 +205,7 @@ export const initialWeapons: Weapon[] = [
     rarity: 'SSR',
     source: 'farmable',
     level: 1,
-    maxLevel: 100,
+    maxLevel: 150,
     stats: { hp: 96, atk: 390, defense: 0 },
     assetKey: 'weapon/furnace-grid-blade',
     skills: [
@@ -235,7 +235,7 @@ export const initialSummons: Summon[] = [
     element: 'fire',
     rarity: 'SSR',
     level: 1,
-    maxLevel: 100,
+    maxLevel: 150,
     stats: { hp: 380, atk: 960, defense: 0 },
     aura: { label: '方阵技能效果提升 50%', target: 'magna', boost: 0.5 },
     assetKey: 'summon/helios-engine',
@@ -246,7 +246,7 @@ export const initialSummons: Summon[] = [
     element: 'fire',
     rarity: 'SSR',
     level: 1,
-    maxLevel: 100,
+    maxLevel: 150,
     stats: { hp: 420, atk: 880, defense: 0 },
     aura: { label: '火属性攻击提升 40%', target: 'elemental', boost: 0.4 },
     assetKey: 'summon/aurora-core',

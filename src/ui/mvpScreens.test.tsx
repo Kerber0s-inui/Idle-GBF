@@ -1,89 +1,96 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it } from 'vitest';
 import { GameProvider } from '../state/gameStore';
-import { createInitialSave, exportSave } from '../domain/save';
-import { storageKey } from '../state/gameStore';
-import { AppShell } from './AppShell';
+import { FormationScreen } from './screens/FormationScreen';
 
-describe('mvp screens', () => {
-  it('shows first clear, sweep setup, formation breakdown, gacha and save tools', async () => {
+describe('formation screen', () => {
+  beforeEach(() => localStorage.clear());
+
+  it('renders team formation plus dedicated weapon and summon regions', () => {
     render(
       <GameProvider now={() => 1000}>
-        <AppShell />
+        <FormationScreen />
       </GameProvider>,
     );
 
-    expect(screen.getByRole('button', { name: '开始首通' })).toBeInTheDocument();
-    await userEvent.click(screen.getByRole('button', { name: '编成' }));
-    expect(screen.getByText('通常攻刃')).toBeInTheDocument();
-    await userEvent.click(screen.getByRole('button', { name: '抽卡' }));
-    expect(screen.getByRole('button', { name: '单抽' })).toBeInTheDocument();
-    await userEvent.click(screen.getByRole('button', { name: '仓库' }));
-    expect(screen.getByRole('button', { name: '导出存档' })).toBeInTheDocument();
-  });
-
-  it('can sweep the just-cleared quest and then continue the main route', async () => {
-    render(
-      <GameProvider now={() => 1000}>
-        <AppShell />
-      </GameProvider>,
-    );
-
-    await userEvent.click(screen.getByRole('button', { name: '开始首通' }));
-
-    expect(screen.getByRole('button', { name: '开始扫荡' })).toBeInTheDocument();
-    await userEvent.click(screen.getByRole('button', { name: '继续主线' }));
-    expect(screen.getByRole('button', { name: '开始首通' })).toBeInTheDocument();
-  });
-
-  it('previews upgrades without spending materials', async () => {
-    const save = createInitialSave(1000);
-    save.inventory.materials['fire-character-exp'] = 1;
-    localStorage.setItem(storageKey, exportSave(save));
-
-    render(
-      <GameProvider now={() => 1000}>
-        <AppShell />
-      </GameProvider>,
-    );
-
-    await userEvent.click(screen.getByRole('button', { name: '强化' }));
-    await userEvent.click(screen.getAllByRole('button', { name: '升级角色' })[0]);
-
-    expect(screen.getByText(/Lv\.2\/80/)).toBeInTheDocument();
-    expect(screen.getByText('角色升级完成')).toBeInTheDocument();
-  });
-
-  it('shows freely selectable quest groups and structured first-clear logs', async () => {
-    render(
-      <GameProvider now={() => 1000}>
-        <AppShell />
-      </GameProvider>,
-    );
-
-    expect(screen.getByRole('heading', { name: '主线副本' })).toBeInTheDocument();
-    expect(screen.getByRole('heading', { name: 'Boss 本' })).toBeInTheDocument();
-    expect(screen.getByRole('heading', { name: '材料本' })).toBeInTheDocument();
-
-    await userEvent.click(screen.getByRole('button', { name: /主线 1/ }));
-    await userEvent.click(screen.getByRole('button', { name: '开始首通' }));
-
-    expect(screen.getAllByText(/造成了 \d+ 伤害/).length).toBeGreaterThan(0);
-    expect(screen.getAllByText('展开')[0]).toBeInTheDocument();
-  });
-
-  it('renders 1+9 weapon and 1+4 summon grids with empty slots', async () => {
-    render(
-      <GameProvider now={() => 1000}>
-        <AppShell />
-      </GameProvider>,
-    );
-
-    await userEvent.click(screen.getByRole('button', { name: '编成' }));
-
+    expect(screen.getByRole('heading', { name: '队伍编成' })).toBeInTheDocument();
+    expect(screen.getByTestId('character-slot-trigger-0')).toHaveTextContent('前排1');
     expect(screen.getAllByTestId('weapon-grid-slot')).toHaveLength(10);
     expect(screen.getAllByTestId('summon-grid-slot')).toHaveLength(5);
-    expect(screen.getAllByText('空')).toHaveLength(11);
+    expect(screen.getByTestId('weapon-main-slot')).toBeInTheDocument();
+    expect(screen.getByTestId('weapon-sub-grid')).toBeInTheDocument();
+    expect(screen.getByTestId('summon-main-slot')).toBeInTheDocument();
+    expect(screen.getByTestId('summon-sub-grid')).toBeInTheDocument();
+  });
+
+  it('opens modal pickers and shows compact equipment details', async () => {
+    render(
+      <GameProvider now={() => 1000}>
+        <FormationScreen />
+      </GameProvider>,
+    );
+
+    await userEvent.click(screen.getByTestId('weapon-main-slot-trigger'));
+    const weaponPicker = screen.getByTestId('weapon-slot-picker');
+    expect(within(weaponPicker).getByRole('dialog')).toBeInTheDocument();
+    const furnaceOption = within(weaponPicker).getByTestId('weapon-picker-option-weapon-furnace-grid-blade');
+    expect(within(furnaceOption).getByText(/Lv\.1 \/ SLv\.1/)).toBeInTheDocument();
+    expect(within(furnaceOption).getByText(/方阵攻刃 \+7%/)).toBeInTheDocument();
+    await userEvent.click(furnaceOption);
+    expect(screen.getByTestId('weapon-main-slot')).toHaveTextContent('第七炉心刃');
+
+    await userEvent.click(screen.getByTestId('summon-main-slot-trigger'));
+    const summonPicker = screen.getByTestId('summon-slot-picker');
+    expect(within(summonPicker).getByRole('dialog')).toBeInTheDocument();
+    expect(within(summonPicker).getByText(/ATK 880 \/ HP 420/)).toBeInTheDocument();
+    await userEvent.click(within(summonPicker).getByTestId('summon-picker-option-summon-aurora-core'));
+    expect(screen.getByTestId('summon-main-slot')).toHaveTextContent('赤曦炉核');
+  });
+
+  it('swaps slots when selecting equipment that is already equipped elsewhere', async () => {
+    render(
+      <GameProvider now={() => 1000}>
+        <FormationScreen />
+      </GameProvider>,
+    );
+
+    await userEvent.click(screen.getByTestId('weapon-main-slot-trigger'));
+    const weaponPicker = screen.getByTestId('weapon-slot-picker');
+    await userEvent.click(within(weaponPicker).getByTestId('weapon-picker-option-weapon-furnace-grid-blade'));
+
+    expect(screen.getByTestId('weapon-main-slot')).toHaveTextContent('第七炉心刃');
+    expect(screen.getByTestId('weapon-slot-trigger-1')).toHaveTextContent('赤轨誓剑');
+  });
+
+  it('swaps team members from a floating picker', async () => {
+    render(
+      <GameProvider now={() => 1000}>
+        <FormationScreen />
+      </GameProvider>,
+    );
+
+    await userEvent.click(screen.getByTestId('character-slot-trigger-0'));
+    const characterPicker = screen.getByTestId('character-slot-picker');
+    expect(within(characterPicker).getByRole('dialog')).toBeInTheDocument();
+    await userEvent.click(within(characterPicker).getByTestId('character-picker-option-char-noin-ash-protocol'));
+
+    expect(screen.getByTestId('character-slot-trigger-0')).toHaveTextContent('诺因·灰烬协议');
+    expect(screen.getByTestId('character-slot-trigger-3')).toHaveTextContent('莱娅·赤轨');
+  });
+
+  it('equips into the clicked sub slot instead of always replacing the main slot', async () => {
+    render(
+      <GameProvider now={() => 1000}>
+        <FormationScreen />
+      </GameProvider>,
+    );
+
+    await userEvent.click(screen.getByTestId('weapon-slot-trigger-2'));
+    const weaponPicker = screen.getByTestId('weapon-slot-picker');
+    await userEvent.click(within(weaponPicker).getByTestId('weapon-picker-option-weapon-furnace-grid-blade'));
+
+    expect(screen.getByTestId('weapon-main-slot')).toHaveTextContent('赤轨誓剑');
+    expect(screen.getByTestId('weapon-slot-trigger-2')).toHaveTextContent('第七炉心刃');
   });
 });

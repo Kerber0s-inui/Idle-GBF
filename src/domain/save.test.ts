@@ -37,6 +37,38 @@ describe('save', () => {
     expect(imported.activeRun).toEqual(save.activeRun);
   });
 
+  it('round-trips manual formation selections', () => {
+    const save = createInitialSave(1234);
+    save.formation.characterIds = [
+      'char-noin-ash-protocol',
+      'char-caro-furnace',
+      'char-mira-astral-circuit',
+      'char-leya-ember-rail',
+    ];
+    save.formation.weaponIds = [
+      'weapon-furnace-grid-blade',
+      'weapon-red-rail-saber',
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+    ];
+    save.formation.summonIds = ['summon-aurora-core', 'summon-helios-engine', null, null, null];
+
+    const imported = importSave(exportSave(save));
+
+    expect(imported.formation.characterIds[0]).toBe('char-noin-ash-protocol');
+    expect(imported.formation.characterIds[3]).toBe('char-leya-ember-rail');
+    expect(imported.formation.weaponIds[0]).toBe('weapon-furnace-grid-blade');
+    expect(imported.formation.weaponIds[1]).toBe('weapon-red-rail-saber');
+    expect(imported.formation.summonIds[0]).toBe('summon-aurora-core');
+    expect(imported.formation.summonIds[1]).toBe('summon-helios-engine');
+  });
+
   it('round-trips settled active sweep runs', () => {
     const save = createInitialSave(1234);
     save.activeRun = {

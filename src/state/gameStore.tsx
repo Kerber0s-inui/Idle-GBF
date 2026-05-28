@@ -9,6 +9,8 @@ import {
 import { createInitialGachaPool, pullGacha, type GachaPoolItem } from '../domain/gacha';
 import {
   applyCharacterExp,
+  dismantleSummon as dismantleSummonGrowth,
+  dismantleWeapon as dismantleWeaponGrowth,
   uncapCharacter as uncapCharacterGrowth,
   uncapSummon as uncapSummonGrowth,
   uncapWeapon as uncapWeaponGrowth,
@@ -20,8 +22,14 @@ import {
 import type { RewardStack } from '../domain/rewards';
 import { createInitialSave, importSave, SaveFileSchema, type SaveFile } from '../domain/save';
 import type { RewardKind } from '../domain/types';
+import {
+  getInitialCharacterLevelCap,
+  getInitialSummonLevelCap,
+  getInitialWeaponLevelCap,
+} from '../domain/progression';
 
 export const storageKey = 'idle-gbf-save-v1';
+const oneTimeMaterialGiftKey = 'idle-gbf-dev-material-gift-v1';
 
 type GameContextValue = {
   save: SaveFile;
@@ -35,13 +43,18 @@ type GameContextValue = {
   addMaterial: (itemId: string, quantity: number) => void;
   grantRewards: (rewards: RewardStack[]) => void;
   pullFromGacha: (count: 1 | 10) => GachaPoolItem[];
-  upgradeCharacter: (characterId: string) => void;
-  uncapCharacter: (characterId: string) => void;
-  upgradeWeapon: (weaponId: string) => void;
-  upgradeWeaponSkill: (weaponId: string) => void;
-  uncapWeapon: (weaponId: string) => void;
-  upgradeSummon: (summonId: string) => void;
-  uncapSummon: (summonId: string) => void;
+  upgradeCharacter: (characterId: string, targetLevel: number) => void;
+  uncapCharacter: (characterId: string, targetUncap: number) => void;
+  upgradeWeapon: (weaponId: string, targetLevel: number) => void;
+  upgradeWeaponSkill: (weaponId: string, targetSkillLevel: number) => void;
+  uncapWeapon: (weaponId: string, targetUncap: number) => void;
+  dismantleWeapon: (weaponId: string) => void;
+  upgradeSummon: (summonId: string, targetLevel: number) => void;
+  uncapSummon: (summonId: string, targetUncap: number) => void;
+  dismantleSummon: (summonId: string) => void;
+  setCharacterSlot: (slotIndex: number, characterId: string) => void;
+  setWeaponSlot: (slotIndex: number, weaponId: string | null) => void;
+  setSummonSlot: (slotIndex: number, summonId: string | null) => void;
 };
 
 type GameProviderProps = {
@@ -54,13 +67,42 @@ const GameContext = createContext<GameContextValue | null>(null);
 
 function readInitialSave(now: number): SaveFile {
   const stored = localStorage.getItem(storageKey);
-  if (!stored) return createInitialSave(now);
+  if (!stored) return applyOneTimeMaterialGift(createInitialSave(now));
 
   try {
-    return importSave(stored);
+    return applyOneTimeMaterialGift(importSave(stored));
   } catch {
-    return createInitialSave(now);
+    return applyOneTimeMaterialGift(createInitialSave(now));
   }
+}
+
+function applyOneTimeMaterialGift(save: SaveFile): SaveFile {
+  if (typeof navigator !== 'undefined' && /jsdom/i.test(navigator.userAgent)) return save;
+  if (localStorage.getItem(oneTimeMaterialGiftKey) === 'claimed') return save;
+
+  const next: SaveFile = {
+    ...save,
+    updatedAt: Date.now(),
+    inventory: {
+      ...save.inventory,
+      materials: {
+        ...save.inventory.materials,
+        'ember-chip': (save.inventory.materials['ember-chip'] ?? 0) + 50,
+        'furnace-core': (save.inventory.materials['furnace-core'] ?? 0) + 50,
+        'fire-character-exp': (save.inventory.materials['fire-character-exp'] ?? 0) + 50,
+        'fire-character-uncap': (save.inventory.materials['fire-character-uncap'] ?? 0) + 20,
+        'fire-weapon-exp': (save.inventory.materials['fire-weapon-exp'] ?? 0) + 50,
+        'fire-weapon-skill': (save.inventory.materials['fire-weapon-skill'] ?? 0) + 50,
+        'fire-weapon-uncap': (save.inventory.materials['fire-weapon-uncap'] ?? 0) + 20,
+        'fire-summon-exp': (save.inventory.materials['fire-summon-exp'] ?? 0) + 50,
+        'fire-summon-uncap': (save.inventory.materials['fire-summon-uncap'] ?? 0) + 20,
+      },
+    },
+  };
+
+  localStorage.setItem(storageKey, JSON.stringify(SaveFileSchema.parse(next), null, 2));
+  localStorage.setItem(oneTimeMaterialGiftKey, 'claimed');
+  return next;
 }
 
 function persistSave(next: SaveFile) {
@@ -100,6 +142,8 @@ function addRewardsToInventory(save: SaveFile, rewards: RewardStack[]): SaveFile
   const materials = { ...save.inventory.materials };
   const weaponIds = [...save.inventory.weaponIds];
   const summonIds = [...save.inventory.summonIds];
+  const weaponStates = { ...save.weaponStates };
+  const summonStates = { ...save.summonStates };
 
   for (const reward of rewards) {
     assertPositiveIntegerRewardQuantity(reward.quantity);
@@ -108,9 +152,28 @@ function addRewardsToInventory(save: SaveFile, rewards: RewardStack[]): SaveFile
     } else if (isMaterialRewardKind(reward.kind)) {
       materials[reward.itemId] = (materials[reward.itemId] ?? 0) + reward.quantity;
     } else if (reward.kind === 'weapon') {
-      if (!weaponIds.includes(reward.itemId)) weaponIds.push(reward.itemId);
+      if (!weaponIds.includes(reward.itemId)) {
+        weaponIds.push(reward.itemId);
+        const weapon = initialWeapons.find((candidate) => candidate.id === reward.itemId);
+        weaponStates[reward.itemId] = {
+          level: weapon?.level ?? 1,
+          exp: 0,
+          uncap: 0,
+          levelCap: getInitialWeaponLevelCap({ maxLevel: weapon?.maxLevel ?? 100, rarity: weapon?.rarity ?? 'SSR' }),
+          skillLevel: weapon?.skills[0]?.level ?? 1,
+        };
+      }
     } else if (reward.kind === 'summon') {
-      if (!summonIds.includes(reward.itemId)) summonIds.push(reward.itemId);
+      if (!summonIds.includes(reward.itemId)) {
+        summonIds.push(reward.itemId);
+        const summon = initialSummons.find((candidate) => candidate.id === reward.itemId);
+        summonStates[reward.itemId] = {
+          level: summon?.level ?? 1,
+          exp: 0,
+          uncap: 0,
+          levelCap: getInitialSummonLevelCap({ maxLevel: summon?.maxLevel ?? 100, rarity: summon?.rarity ?? 'SSR' }),
+        };
+      }
     }
   }
 
@@ -123,7 +186,35 @@ function addRewardsToInventory(save: SaveFile, rewards: RewardStack[]): SaveFile
       weaponIds,
       summonIds,
     },
+    weaponStates,
+    summonStates,
   };
+}
+
+function assertFormationIndex(index: number, size: number) {
+  if (!Number.isInteger(index) || index < 0 || index >= size) throw new Error('编成槽位无效');
+}
+
+function swapFormationItem<T extends string | null>(items: T[], slotIndex: number, nextItemId: T) {
+  const next = [...items];
+  const replacedItemId = next[slotIndex];
+  if (nextItemId === replacedItemId) return next;
+
+  const existingIndex = nextItemId ? next.findIndex((itemId, index) => index !== slotIndex && itemId === nextItemId) : -1;
+  next[slotIndex] = nextItemId;
+  if (existingIndex >= 0) next[existingIndex] = replacedItemId;
+  return next;
+}
+
+function swapFixedFormationItem(items: string[], slotIndex: number, nextItemId: string) {
+  const next = [...items];
+  const replacedItemId = next[slotIndex];
+  if (nextItemId === replacedItemId) return next;
+
+  const existingIndex = next.findIndex((itemId, index) => index !== slotIndex && itemId === nextItemId);
+  next[slotIndex] = nextItemId;
+  if (existingIndex >= 0) next[existingIndex] = replacedItemId;
+  return next;
 }
 
 export function GameProvider({ children, now = () => Date.now(), random = Math.random }: GameProviderProps) {
@@ -217,21 +308,14 @@ export function GameProvider({ children, now = () => Date.now(), random = Math.r
             now: settledAt,
             dropRateBonus: 0,
             random,
+            allowPartialSettlement: true,
           });
-
-          if (!settlement.isComplete) {
-            return {
-              ...current,
-              updatedAt: settledAt,
-              activeRun: settlement.run,
-            };
-          }
 
           if (settlement.rewards.length === 0) {
             return {
               ...current,
               updatedAt: settledAt,
-              activeRun: settlement.run.settledAt ? null : settlement.run,
+              activeRun: null,
             };
           }
 
@@ -239,7 +323,7 @@ export function GameProvider({ children, now = () => Date.now(), random = Math.r
           const rewarded = addRewardsToInventory(current, settlement.rewards);
           const withCharacterExp = applyCharacterExp(
             rewarded,
-            rewarded.inventory.characterIds.slice(0, 4),
+            rewarded.formation.characterIds,
             quest.difficulty * 100 * settlement.completedRuns,
           );
           return {
@@ -301,10 +385,20 @@ export function GameProvider({ children, now = () => Date.now(), random = Math.r
           results = pull.results;
 
           const characterIds = [...current.inventory.characterIds];
+          const characterStates = { ...current.characterStates };
           const rewards: RewardStack[] = [];
           for (const result of pull.results) {
             if (result.kind === 'character') {
-              if (!characterIds.includes(result.id)) characterIds.push(result.id);
+              if (!characterIds.includes(result.id)) {
+                characterIds.push(result.id);
+                const character = initialCharacters.find((candidate) => candidate.id === result.id);
+                characterStates[result.id] = {
+                  level: character?.level ?? 1,
+                  exp: 0,
+                  uncap: 0,
+                  levelCap: getInitialCharacterLevelCap({ maxLevel: character?.maxLevel ?? 80 }),
+                };
+              }
             } else {
               rewards.push({ itemId: result.id, kind: result.kind, quantity: 1 });
             }
@@ -314,7 +408,7 @@ export function GameProvider({ children, now = () => Date.now(), random = Math.r
             {
               ...current,
               inventory: {
-                ...current.inventory,
+              ...current.inventory,
                 characterIds,
                 currencies: {
                   ...current.inventory.currencies,
@@ -322,6 +416,7 @@ export function GameProvider({ children, now = () => Date.now(), random = Math.r
                   'gacha-ticket': pull.remainingTickets,
                 },
               },
+              characterStates,
             },
             rewards,
           );
@@ -334,26 +429,77 @@ export function GameProvider({ children, now = () => Date.now(), random = Math.r
 
         return results;
       },
-      upgradeCharacter(characterId) {
-        updateSave((current) => ({ ...upgradeCharacterGrowth(current, characterId), updatedAt: now() }));
+      upgradeCharacter(characterId, targetLevel) {
+        updateSave((current) => ({ ...upgradeCharacterGrowth(current, characterId, targetLevel), updatedAt: now() }));
       },
-      uncapCharacter(characterId) {
-        updateSave((current) => ({ ...uncapCharacterGrowth(current, characterId), updatedAt: now() }));
+      uncapCharacter(characterId, targetUncap) {
+        updateSave((current) => ({ ...uncapCharacterGrowth(current, characterId, targetUncap), updatedAt: now() }));
       },
-      upgradeWeapon(weaponId) {
-        updateSave((current) => ({ ...upgradeWeaponGrowth(current, weaponId), updatedAt: now() }));
+      upgradeWeapon(weaponId, targetLevel) {
+        updateSave((current) => ({ ...upgradeWeaponGrowth(current, weaponId, targetLevel), updatedAt: now() }));
       },
-      upgradeWeaponSkill(weaponId) {
-        updateSave((current) => ({ ...upgradeWeaponSkillGrowth(current, weaponId), updatedAt: now() }));
+      upgradeWeaponSkill(weaponId, targetSkillLevel) {
+        updateSave((current) => ({ ...upgradeWeaponSkillGrowth(current, weaponId, targetSkillLevel), updatedAt: now() }));
       },
-      uncapWeapon(weaponId) {
-        updateSave((current) => ({ ...uncapWeaponGrowth(current, weaponId), updatedAt: now() }));
+      uncapWeapon(weaponId, targetUncap) {
+        updateSave((current) => ({ ...uncapWeaponGrowth(current, weaponId, targetUncap), updatedAt: now() }));
       },
-      upgradeSummon(summonId) {
-        updateSave((current) => ({ ...upgradeSummonGrowth(current, summonId), updatedAt: now() }));
+      dismantleWeapon(weaponId) {
+        updateSave((current) => ({ ...dismantleWeaponGrowth(current, weaponId), updatedAt: now() }));
       },
-      uncapSummon(summonId) {
-        updateSave((current) => ({ ...uncapSummonGrowth(current, summonId), updatedAt: now() }));
+      upgradeSummon(summonId, targetLevel) {
+        updateSave((current) => ({ ...upgradeSummonGrowth(current, summonId, targetLevel), updatedAt: now() }));
+      },
+      uncapSummon(summonId, targetUncap) {
+        updateSave((current) => ({ ...uncapSummonGrowth(current, summonId, targetUncap), updatedAt: now() }));
+      },
+      dismantleSummon(summonId) {
+        updateSave((current) => ({ ...dismantleSummonGrowth(current, summonId), updatedAt: now() }));
+      },
+      setCharacterSlot(slotIndex, characterId) {
+        assertFormationIndex(slotIndex, 4);
+        updateSave((current) => {
+          if (!current.inventory.characterIds.includes(characterId)) throw new Error('角色未持有');
+          const characterIds = swapFixedFormationItem(current.formation.characterIds, slotIndex, characterId);
+          return {
+            ...current,
+            updatedAt: now(),
+            formation: {
+              ...current.formation,
+              characterIds,
+            },
+          };
+        });
+      },
+      setWeaponSlot(slotIndex, weaponId) {
+        assertFormationIndex(slotIndex, 10);
+        updateSave((current) => {
+          if (weaponId && !current.inventory.weaponIds.includes(weaponId)) throw new Error('武器未持有');
+          const weaponIds = swapFormationItem(current.formation.weaponIds, slotIndex, weaponId);
+          return {
+            ...current,
+            updatedAt: now(),
+            formation: {
+              ...current.formation,
+              weaponIds,
+            },
+          };
+        });
+      },
+      setSummonSlot(slotIndex, summonId) {
+        assertFormationIndex(slotIndex, 5);
+        updateSave((current) => {
+          if (summonId && !current.inventory.summonIds.includes(summonId)) throw new Error('召唤石未持有');
+          const summonIds = swapFormationItem(current.formation.summonIds, slotIndex, summonId);
+          return {
+            ...current,
+            updatedAt: now(),
+            formation: {
+              ...current.formation,
+              summonIds,
+            },
+          };
+        });
       },
     };
   }, [save, now, random]);

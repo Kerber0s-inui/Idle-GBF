@@ -90,7 +90,7 @@ describe('game store', () => {
     expect(result.current.save.updatedAt).toBe(before);
   });
 
-  it('does not reward unfinished sweeps and rewards completed sweeps once', () => {
+  it('supports early settlement using only completed runs and discards the current unfinished run', () => {
     const wrapper = ({ children }: { children: ReactNode }) => <GameProvider now={() => 1000} random={() => 1}>{children}</GameProvider>;
     const { result } = renderHook(() => useGame(), { wrapper });
 
@@ -102,22 +102,22 @@ describe('game store', () => {
       rewards = result.current.settleActiveSweep(1000 + 60_000);
     });
     expect(rewards).toEqual([]);
-    expect(result.current.save.activeRun).not.toBeNull();
+    expect(result.current.save.activeRun).toBeNull();
     expect(result.current.save.inventory.materials['ember-chip']).toBe(0);
 
     act(() => {
       rewards = result.current.settleActiveSweep(1000 + 10 * 60_000);
     });
-    expect(rewards).toEqual([{ itemId: 'ember-chip', kind: 'material', quantity: 2 }]);
-    expect(result.current.save.inventory.materials['ember-chip']).toBe(2);
-    expect(result.current.save.characterStates['char-leya-ember-rail'].exp).toBe(50);
+    expect(rewards).toEqual([]);
+    expect(result.current.save.inventory.materials['ember-chip']).toBe(0);
+    expect(result.current.save.characterStates['char-leya-ember-rail'].exp).toBe(0);
     expect(result.current.save.activeRun).toBeNull();
 
     act(() => {
       rewards = result.current.settleActiveSweep(1000 + 20 * 60_000);
     });
     expect(rewards).toEqual([]);
-    expect(result.current.save.inventory.materials['ember-chip']).toBe(2);
+    expect(result.current.save.inventory.materials['ember-chip']).toBe(0);
   });
 
   it('settles a completed sweep once when called twice in the same action batch', () => {
@@ -137,6 +137,24 @@ describe('game store', () => {
     expect(first).toEqual([{ itemId: 'ember-chip', kind: 'material', quantity: 2 }]);
     expect(second).toEqual([]);
     expect(result.current.save.inventory.materials['ember-chip']).toBe(2);
+    expect(result.current.save.activeRun).toBeNull();
+  });
+
+  it('grants only completed runs when settling before sweep completion', () => {
+    const wrapper = ({ children }: { children: ReactNode }) => <GameProvider now={() => 1000} random={() => 1}>{children}</GameProvider>;
+    const { result } = renderHook(() => useGame(), { wrapper });
+
+    act(() => result.current.markQuestCleared('quest-main-1'));
+    act(() => result.current.startSweep('quest-main-1', 3));
+
+    let rewards: ReturnType<typeof result.current.settleActiveSweep> = [];
+    act(() => {
+      rewards = result.current.settleActiveSweep(1000 + 11 * 60_000);
+    });
+
+    expect(rewards).toEqual([{ itemId: 'ember-chip', kind: 'material', quantity: 2 }]);
+    expect(result.current.save.inventory.materials['ember-chip']).toBe(2);
+    expect(result.current.save.characterStates['char-leya-ember-rail'].exp).toBe(50);
     expect(result.current.save.activeRun).toBeNull();
   });
 
@@ -225,6 +243,59 @@ describe('game store', () => {
     expect(result.current.save.weaponStates['weapon-red-rail-saber'].skillLevel).toBe(2);
     expect(result.current.save.inventory.materials['fire-character-exp']).toBe(0);
     expect(result.current.save.inventory.materials['fire-weapon-skill']).toBe(0);
+  });
+
+  it('swaps character formation slots', () => {
+    const wrapper = ({ children }: { children: ReactNode }) => <GameProvider now={() => 1000}>{children}</GameProvider>;
+    const { result } = renderHook(() => useGame(), { wrapper });
+
+    act(() => result.current.setCharacterSlot(0, 'char-noin-ash-protocol'));
+
+    expect(result.current.save.formation.characterIds[0]).toBe('char-noin-ash-protocol');
+    expect(result.current.save.formation.characterIds[3]).toBe('char-leya-ember-rail');
+  });
+
+  it('updates weapon and summon formation slots', () => {
+    const wrapper = ({ children }: { children: ReactNode }) => <GameProvider now={() => 1000}>{children}</GameProvider>;
+    const { result } = renderHook(() => useGame(), { wrapper });
+
+    act(() => result.current.setWeaponSlot(0, 'weapon-furnace-grid-blade'));
+    act(() => result.current.setWeaponSlot(1, 'weapon-red-rail-saber'));
+    act(() => result.current.setSummonSlot(0, 'summon-aurora-core'));
+    act(() => result.current.setSummonSlot(1, 'summon-helios-engine'));
+
+    expect(result.current.save.formation.weaponIds[0]).toBe('weapon-furnace-grid-blade');
+    expect(result.current.save.formation.weaponIds[1]).toBe('weapon-red-rail-saber');
+    expect(result.current.save.formation.summonIds[0]).toBe('summon-aurora-core');
+    expect(result.current.save.formation.summonIds[1]).toBe('summon-helios-engine');
+  });
+
+  it('swaps positions when the chosen equipment is already on the grid', () => {
+    const wrapper = ({ children }: { children: ReactNode }) => <GameProvider now={() => 1000}>{children}</GameProvider>;
+    const { result } = renderHook(() => useGame(), { wrapper });
+
+    act(() => result.current.setWeaponSlot(0, 'weapon-furnace-grid-blade'));
+    expect(result.current.save.formation.weaponIds[0]).toBe('weapon-furnace-grid-blade');
+    expect(result.current.save.formation.weaponIds[1]).toBe('weapon-red-rail-saber');
+
+    act(() => result.current.setSummonSlot(0, 'summon-aurora-core'));
+    expect(result.current.save.formation.summonIds[0]).toBe('summon-aurora-core');
+    expect(result.current.save.formation.summonIds[1]).toBe('summon-helios-engine');
+  });
+
+  it('moves equipped items into empty target slots instead of duplicating them', () => {
+    const wrapper = ({ children }: { children: ReactNode }) => <GameProvider now={() => 1000}>{children}</GameProvider>;
+    const { result } = renderHook(() => useGame(), { wrapper });
+
+    act(() => result.current.setWeaponSlot(2, 'weapon-furnace-grid-blade'));
+    expect(result.current.save.formation.weaponIds[0]).toBe('weapon-red-rail-saber');
+    expect(result.current.save.formation.weaponIds[1]).toBeNull();
+    expect(result.current.save.formation.weaponIds[2]).toBe('weapon-furnace-grid-blade');
+
+    act(() => result.current.setSummonSlot(2, 'summon-aurora-core'));
+    expect(result.current.save.formation.summonIds[0]).toBe('summon-helios-engine');
+    expect(result.current.save.formation.summonIds[1]).toBeNull();
+    expect(result.current.save.formation.summonIds[2]).toBe('summon-aurora-core');
   });
 
   it('rejects invalid reward quantities', () => {

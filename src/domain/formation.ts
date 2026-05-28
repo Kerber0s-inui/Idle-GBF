@@ -19,7 +19,7 @@ export interface SummonGridFormation {
   slots: FormationSlot[];
 }
 
-function createSlots(input: { itemIds: string[]; size: number; filledKind: Exclude<FormationSlotKind, 'empty'> }) {
+function createSlots(input: { itemIds: Array<string | null | undefined>; size: number; filledKind: Exclude<FormationSlotKind, 'empty'> }) {
   return Array.from({ length: input.size }, (_, index): FormationSlot => {
     const itemId = input.itemIds[index] ?? null;
 
@@ -32,7 +32,7 @@ function createSlots(input: { itemIds: string[]; size: number; filledKind: Exclu
   });
 }
 
-export function createWeaponGrid(weaponIds: string[]): WeaponGridFormation {
+export function createWeaponGrid(weaponIds: Array<string | null | undefined>): WeaponGridFormation {
   const itemIds = weaponIds.slice(0, 10);
 
   return {
@@ -41,7 +41,7 @@ export function createWeaponGrid(weaponIds: string[]): WeaponGridFormation {
   };
 }
 
-export function createSummonGrid(summonIds: string[]): SummonGridFormation {
+export function createSummonGrid(summonIds: Array<string | null | undefined>): SummonGridFormation {
   const itemIds = summonIds.slice(0, 5);
 
   return {

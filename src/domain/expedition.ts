@@ -73,10 +73,16 @@ export function settleSweepRun(input: {
   now: number;
   dropRateBonus: number;
   random: () => number;
+  allowPartialSettlement?: boolean;
 }): { completedRuns: number; rewards: RewardStack[]; isComplete: boolean; run: ExpeditionRun } {
   const { completedRuns, isComplete } = getSweepProgress({ run: input.run, now: input.now });
-  if (!isComplete) return { completedRuns, rewards: [], isComplete, run: input.run };
   if (Number.isFinite(input.run.settledAt)) return { completedRuns, rewards: [], isComplete, run: input.run };
+  if (!isComplete && !input.allowPartialSettlement) return { completedRuns, rewards: [], isComplete, run: input.run };
+
+  const settledRun = { ...input.run, settledAt: finiteOrZero(input.now) };
+  if (completedRuns <= 0) {
+    return { completedRuns, rewards: [], isComplete, run: settledRun };
+  }
 
   const rewards = rollRewards({
     quest: input.quest,
@@ -86,5 +92,5 @@ export function settleSweepRun(input: {
     random: input.random,
   });
 
-  return { completedRuns, rewards, isComplete, run: { ...input.run, settledAt: finiteOrZero(input.now) } };
+  return { completedRuns, rewards, isComplete, run: settledRun };
 }

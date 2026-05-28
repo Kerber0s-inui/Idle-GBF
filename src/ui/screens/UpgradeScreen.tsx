@@ -1,15 +1,192 @@
-import { useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { initialCharacters, initialSummons, initialWeapons } from '../../domain/content';
+import {
+  getCharacterUncapOptions,
+  getCharacterUpgradeOptions,
+  getSummonUncapOptions,
+  getSummonUpgradeOptions,
+  getWeaponSkillUpgradeOptions,
+  getWeaponUncapOptions,
+  getWeaponUpgradeOptions,
+  previewCharacterUncap,
+  previewCharacterUpgrade,
+  previewSummonDismantle,
+  previewSummonUncap,
+  previewSummonUpgrade,
+  previewWeaponDismantle,
+  previewWeaponSkillUpgrade,
+  previewWeaponUncap,
+  previewWeaponUpgrade,
+  type DismantlePreviewResult,
+  type GrowthActionKind,
+  type GrowthPreviewResult,
+  type GrowthSelectionDefinition,
+} from '../../domain/growth';
+import {
+  applyCharacterProgression,
+  applySummonProgression,
+  applyWeaponProgression,
+  getUncapProgressVisual,
+} from '../../domain/progression';
 import { useGame } from '../../state/gameStore';
 import { IconBadge } from '../components/IconBadge';
 
-function materialCount(materials: Record<string, number>, itemId: string) {
-  return materials[itemId] ?? 0;
+type UpgradeTab = 'character' | 'weapon' | 'summon';
+type ActionState =
+  | { tab: 'character'; itemId: string }
+  | { tab: 'weapon'; itemId: string }
+  | { tab: 'summon'; itemId: string }
+  | null;
+
+type OperationState =
+  | { tab: 'character'; itemId: string; definition: GrowthSelectionDefinition }
+  | { tab: 'weapon'; itemId: string; definition: GrowthSelectionDefinition }
+  | { tab: 'summon'; itemId: string; definition: GrowthSelectionDefinition }
+  | { tab: 'weapon'; itemId: string; dismantle: true }
+  | { tab: 'summon'; itemId: string; dismantle: true }
+  | null;
+
+type GridItem = {
+  id: string;
+  name: string;
+  level: number;
+  levelCap: number;
+  skillLevel?: number;
+  skillName?: string;
+  skillEffect?: string;
+  uncap: number;
+  equipped: boolean;
+};
+
+const PAGE_SIZE = 16;
+const PICKER_ITEM_HEIGHT = 56;
+const PICKER_VISIBLE_ROWS = 5;
+const PICKER_VIEWPORT_HEIGHT = PICKER_ITEM_HEIGHT * PICKER_VISIBLE_ROWS;
+const PICKER_SIDE_PADDING = (PICKER_VIEWPORT_HEIGHT - PICKER_ITEM_HEIGHT) / 2;
+
+function isDismantlePreview(result: GrowthPreviewResult | DismantlePreviewResult | null): result is DismantlePreviewResult {
+  return Boolean(result && 'rewards' in result);
+}
+
+function getWeaponSkillText(item: GridItem) {
+  if (!item.skillLevel || !item.skillName || !item.skillEffect) return null;
+  return `${item.skillName} / SLv.${item.skillLevel} / ${item.skillEffect}`;
+}
+
+function getActionLabel(action: GrowthActionKind) {
+  switch (action) {
+    case 'characterUpgrade':
+    case 'weaponUpgrade':
+    case 'summonUpgrade':
+      return '升级';
+    case 'weaponSkillUpgrade':
+      return '词条升级';
+    case 'characterUncap':
+    case 'weaponUncap':
+    case 'summonUncap':
+      return '突破';
+    case 'weaponDismantle':
+    case 'summonDismantle':
+      return '拆解';
+  }
+}
+
+function clampIndex(index: number, optionsLength: number) {
+  return Math.min(Math.max(index, 0), Math.max(0, optionsLength - 1));
+}
+
+function scrollPickerViewport(element: HTMLDivElement | null, top: number, behavior: ScrollBehavior = 'auto') {
+  if (!element) return;
+  if (typeof element.scrollTo === 'function') {
+    element.scrollTo({ top, behavior });
+    return;
+  }
+  element.scrollTop = top;
+}
+
+function renderStars(item: GridItem, canTranscend: boolean) {
+  const visual = getUncapProgressVisual({
+    uncap: item.uncap,
+    rule: {
+      normalUncapCount: 3,
+      transcendenceEnabled: canTranscend,
+      transcendenceStepCount: 5,
+    },
+  });
+
+  return (
+    <div className="upgrade-stars" aria-label={`突破 ${item.uncap}`}>
+      {Array.from({ length: visual.mainStars }, (_, index) => (
+        <span
+          className={index < visual.filledMainStars ? `upgrade-star ${index === visual.mainStars - 1 ? 'upgrade-star-final' : 'upgrade-star-filled'}` : 'upgrade-star'}
+          key={`${item.id}-star-${index}`}
+        >
+          ★
+        </span>
+      ))}
+      {visual.hasTranscendenceStar ? (
+        <span className={visual.transcendenceFill > 0 ? 'upgrade-star upgrade-star-transcend' : 'upgrade-star'}>
+          {visual.transcendenceFill > 0 ? `★${Math.round(visual.transcendenceFill * 5)}/5` : '☆'}
+        </span>
+      ) : null}
+    </div>
+  );
+}
+
+function getOperationPreview(save: ReturnType<typeof useGame>['save'], operationState: OperationState, targetValue: number) {
+  if (!operationState) return null;
+  if ('dismantle' in operationState) {
+    return operationState.tab === 'weapon' ? previewWeaponDismantle(save, operationState.itemId) : previewSummonDismantle(save, operationState.itemId);
+  }
+
+  switch (operationState.definition.action) {
+    case 'characterUpgrade':
+      return previewCharacterUpgrade(save, operationState.itemId, targetValue);
+    case 'characterUncap':
+      return previewCharacterUncap(save, operationState.itemId, targetValue);
+    case 'weaponUpgrade':
+      return previewWeaponUpgrade(save, operationState.itemId, targetValue);
+    case 'weaponSkillUpgrade':
+      return previewWeaponSkillUpgrade(save, operationState.itemId, targetValue);
+    case 'weaponUncap':
+      return previewWeaponUncap(save, operationState.itemId, targetValue);
+    case 'summonUpgrade':
+      return previewSummonUpgrade(save, operationState.itemId, targetValue);
+    case 'summonUncap':
+      return previewSummonUncap(save, operationState.itemId, targetValue);
+    default:
+      return null;
+  }
+}
+
+function buildCompactSummary(preview: GrowthPreviewResult, action: GrowthActionKind) {
+  const currentLevelText = `Lv.${preview.current.level ?? 1}`;
+  const nextLevelText = `Lv.${preview.next.level ?? preview.current.level ?? 1}`;
+  const currentSkillText = `SLv.${preview.current.skillLevel ?? 1}`;
+  const nextSkillText = `SLv.${preview.next.skillLevel ?? preview.current.skillLevel ?? 1}`;
+  const currentUncapText = `阶段${preview.current.uncap ?? 0}`;
+  const nextUncapText = `阶段${preview.next.uncap ?? preview.current.uncap ?? 0}`;
+
+  if (action === 'characterUpgrade' || action === 'weaponUpgrade' || action === 'summonUpgrade') {
+    return [{ label: '等级', value: `${currentLevelText} -> ${nextLevelText}` }, ...preview.costs.map((cost) => ({ label: cost.label, value: `${cost.quantity}` }))];
+  }
+
+  if (action === 'weaponSkillUpgrade') {
+    return [{ label: '词条等级', value: `${currentSkillText} -> ${nextSkillText}` }, ...preview.costs.map((cost) => ({ label: cost.label, value: `${cost.quantity}` }))];
+  }
+
+  if (action === 'characterUncap' || action === 'weaponUncap' || action === 'summonUncap') {
+    return [{ label: '阶段', value: `${currentUncapText} -> ${nextUncapText}` }, ...preview.costs.map((cost) => ({ label: cost.label, value: `${cost.quantity}` }))];
+  }
+
+  return preview.costs.map((cost) => ({ label: cost.label, value: `${cost.quantity}` }));
 }
 
 export function UpgradeScreen() {
   const {
     save,
+    dismantleSummon,
+    dismantleWeapon,
     uncapCharacter,
     uncapSummon,
     uncapWeapon,
@@ -18,22 +195,198 @@ export function UpgradeScreen() {
     upgradeWeapon,
     upgradeWeaponSkill,
   } = useGame();
+  const [tab, setTab] = useState<UpgradeTab>('weapon');
+  const [pageByTab, setPageByTab] = useState<Record<UpgradeTab, number>>({ character: 0, weapon: 0, summon: 0 });
   const [message, setMessage] = useState('');
-  const materials = save.inventory.materials;
-  const characters = save.inventory.characterIds
-    .map((id) => initialCharacters.find((character) => character.id === id))
-    .filter(Boolean);
-  const weapons = save.inventory.weaponIds.map((id) => initialWeapons.find((weapon) => weapon.id === id)).filter(Boolean);
-  const summons = save.inventory.summonIds.map((id) => initialSummons.find((summon) => summon.id === id)).filter(Boolean);
+  const [actionState, setActionState] = useState<ActionState>(null);
+  const [operationState, setOperationState] = useState<OperationState>(null);
+  const [targetValue, setTargetValue] = useState<number | null>(null);
+  const pickerViewportRef = useRef<HTMLDivElement | null>(null);
 
-  const runAction = (action: () => void, success: string) => {
+  const characters = useMemo<GridItem[]>(
+    () =>
+      save.inventory.characterIds.map((id) => {
+        const character = initialCharacters.find((candidate) => candidate.id === id);
+        const progressed = character ? applyCharacterProgression(character, save.characterStates[id]) : null;
+        const state = save.characterStates[id];
+        return {
+          id,
+          name: progressed?.name ?? id,
+          level: state?.level ?? progressed?.level ?? 1,
+          levelCap: state?.levelCap ?? progressed?.maxLevel ?? 40,
+          uncap: state?.uncap ?? 0,
+          equipped: save.formation.characterIds.includes(id),
+        };
+      }),
+    [save],
+  );
+
+  const weapons = useMemo<GridItem[]>(
+    () =>
+      save.inventory.weaponIds.map((id) => {
+        const weapon = initialWeapons.find((candidate) => candidate.id === id);
+        const progressed = weapon ? applyWeaponProgression(weapon, save.weaponStates[id]) : null;
+        const state = save.weaponStates[id];
+        return {
+          id,
+          name: progressed?.name ?? id,
+          level: state?.level ?? progressed?.level ?? 1,
+          levelCap: state?.levelCap ?? progressed?.maxLevel ?? 40,
+          skillLevel: state?.skillLevel ?? progressed?.skills[0]?.level ?? 1,
+          skillName: progressed?.skills[0]?.name,
+          skillEffect: progressed?.skills[0]?.modifiers.map((modifier) => modifier.label).join(' / '),
+          uncap: state?.uncap ?? 0,
+          equipped: save.formation.weaponIds.includes(id),
+        };
+      }),
+    [save],
+  );
+
+  const summons = useMemo<GridItem[]>(
+    () =>
+      save.inventory.summonIds.map((id) => {
+        const summon = initialSummons.find((candidate) => candidate.id === id);
+        const progressed = summon ? applySummonProgression(summon, save.summonStates[id]) : null;
+        const state = save.summonStates[id];
+        return {
+          id,
+          name: progressed?.name ?? id,
+          level: state?.level ?? progressed?.level ?? 1,
+          levelCap: state?.levelCap ?? progressed?.maxLevel ?? 40,
+          uncap: state?.uncap ?? 0,
+          equipped: save.formation.summonIds.includes(id),
+        };
+      }),
+    [save],
+  );
+
+  const items = tab === 'character' ? characters : tab === 'weapon' ? weapons : summons;
+  const currentPage = pageByTab[tab];
+  const maxPage = Math.max(0, Math.ceil(items.length / PAGE_SIZE) - 1);
+  const visibleItems = items.slice(currentPage * PAGE_SIZE, currentPage * PAGE_SIZE + PAGE_SIZE);
+
+  const currentActionItem = actionState
+    ? (actionState.tab === 'character' ? characters : actionState.tab === 'weapon' ? weapons : summons).find((item) => item.id === actionState.itemId) ?? null
+    : null;
+  const currentOperationItem = operationState
+    ? (operationState.tab === 'character' ? characters : operationState.tab === 'weapon' ? weapons : summons).find((item) => item.id === operationState.itemId) ?? null
+    : null;
+
+  const currentPreview = useMemo(() => {
+    if (!operationState) return null;
     try {
-      action();
-      setMessage(success);
+      if ('dismantle' in operationState) return { result: getOperationPreview(save, operationState, 0) as DismantlePreviewResult, error: null };
+      const resolvedTarget = targetValue ?? operationState.definition.options[0]?.value ?? operationState.definition.currentValue;
+      return { result: getOperationPreview(save, operationState, resolvedTarget) as GrowthPreviewResult, error: null };
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : '强化失败');
+      return { result: null, error: error instanceof Error ? error.message : '预览失败' };
+    }
+  }, [operationState, save, targetValue]);
+
+  const previewResult = currentPreview?.result ?? null;
+  const dismantlePreviewResult = isDismantlePreview(previewResult) ? previewResult : null;
+  const dismantleRewards = dismantlePreviewResult?.rewards ?? [];
+  const pickerOptions = operationState && !('dismantle' in operationState) ? operationState.definition.options : [];
+  const fallbackPickerValue = operationState && !('dismantle' in operationState) ? operationState.definition.currentValue : null;
+  const selectedPickerValue = targetValue ?? fallbackPickerValue;
+  const selectedPickerIndex = clampIndex(pickerOptions.findIndex((option) => option.value === selectedPickerValue), pickerOptions.length);
+
+  useEffect(() => {
+    if (!pickerViewportRef.current || pickerOptions.length === 0) return;
+    scrollPickerViewport(pickerViewportRef.current, selectedPickerIndex * PICKER_ITEM_HEIGHT);
+  }, [selectedPickerIndex, pickerOptions.length, operationState]);
+
+  const openActionModal = (nextTab: UpgradeTab, itemId: string) => {
+    setActionState({ tab: nextTab, itemId });
+    setOperationState(null);
+    setTargetValue(null);
+    setMessage('');
+  };
+
+  const closeActionModal = () => setActionState(null);
+  const closeOperation = () => setOperationState(null);
+
+  const openOperation = (nextOperation: OperationState) => {
+    setOperationState(nextOperation);
+    setActionState(null);
+    if (nextOperation && !('dismantle' in nextOperation)) {
+      setTargetValue(nextOperation.definition.options[0]?.value ?? nextOperation.definition.currentValue);
+    } else {
+      setTargetValue(null);
     }
   };
+
+  const setPage = (nextPage: number) => {
+    setPageByTab((current) => ({ ...current, [tab]: Math.min(maxPage, Math.max(0, nextPage)) }));
+  };
+
+  const runAction = (handler: () => void, successMessage: string) => {
+    try {
+      handler();
+      setMessage(successMessage);
+      setOperationState(null);
+      setActionState(null);
+      setTargetValue(null);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : '操作失败');
+    }
+  };
+
+  const confirmOperation = () => {
+    if (!operationState || !currentPreview?.result) return;
+
+    if ('dismantle' in operationState) {
+      runAction(
+        () => (operationState.tab === 'weapon' ? dismantleWeapon(operationState.itemId) : dismantleSummon(operationState.itemId)),
+        `${currentOperationItem?.name ?? '目标'}已拆解`,
+      );
+      return;
+    }
+
+    switch (operationState.definition.action) {
+      case 'characterUpgrade':
+        runAction(() => upgradeCharacter(operationState.itemId, targetValue ?? operationState.definition.currentValue), '角色升级完成');
+        return;
+      case 'characterUncap':
+        runAction(() => uncapCharacter(operationState.itemId, targetValue ?? operationState.definition.currentValue), '角色突破完成');
+        return;
+      case 'weaponUpgrade':
+        runAction(() => upgradeWeapon(operationState.itemId, targetValue ?? operationState.definition.currentValue), '武器升级完成');
+        return;
+      case 'weaponSkillUpgrade':
+        runAction(() => upgradeWeaponSkill(operationState.itemId, targetValue ?? operationState.definition.currentValue), '武器词条升级完成');
+        return;
+      case 'weaponUncap':
+        runAction(() => uncapWeapon(operationState.itemId, targetValue ?? operationState.definition.currentValue), '武器突破完成');
+        return;
+      case 'summonUpgrade':
+        runAction(() => upgradeSummon(operationState.itemId, targetValue ?? operationState.definition.currentValue), '召唤石升级完成');
+        return;
+      case 'summonUncap':
+        runAction(() => uncapSummon(operationState.itemId, targetValue ?? operationState.definition.currentValue), '召唤石突破完成');
+    }
+  };
+
+  const characterActions = (itemId: string) => [
+    { label: '升级', open: () => openOperation({ tab: 'character', itemId, definition: getCharacterUpgradeOptions(save, itemId) }) },
+    { label: '突破', open: () => openOperation({ tab: 'character', itemId, definition: getCharacterUncapOptions(save, itemId) }) },
+  ];
+  const weaponActions = (itemId: string) => [
+    { label: '升级', open: () => openOperation({ tab: 'weapon', itemId, definition: getWeaponUpgradeOptions(save, itemId) }) },
+    { label: '词条升级', open: () => openOperation({ tab: 'weapon', itemId, definition: getWeaponSkillUpgradeOptions(save, itemId) }) },
+    { label: '突破', open: () => openOperation({ tab: 'weapon', itemId, definition: getWeaponUncapOptions(save, itemId) }) },
+    { label: '拆解', open: () => openOperation({ tab: 'weapon', itemId, dismantle: true }) },
+  ];
+  const summonActions = (itemId: string) => [
+    { label: '升级', open: () => openOperation({ tab: 'summon', itemId, definition: getSummonUpgradeOptions(save, itemId) }) },
+    { label: '突破', open: () => openOperation({ tab: 'summon', itemId, definition: getSummonUncapOptions(save, itemId) }) },
+    { label: '拆解', open: () => openOperation({ tab: 'summon', itemId, dismantle: true }) },
+  ];
+
+  const compactRows =
+    currentPreview?.result && !isDismantlePreview(currentPreview.result) && operationState && !('dismantle' in operationState)
+      ? buildCompactSummary(currentPreview.result, operationState.definition.action)
+      : [];
 
   return (
     <>
@@ -42,155 +395,216 @@ export function UpgradeScreen() {
         <h1 id="screen-title">强化</h1>
       </header>
 
-      <div className="panel">
-        <div className="stat-row">
-          <span>角色经验端子</span>
-          <strong>{materialCount(materials, 'fire-character-exp')}</strong>
+      <section className="panel content-panel upgrade-screen-panel">
+        <div className="upgrade-material-strip">
+          <span>角色突破素材</span>
+          <span>武器突破块</span>
+          <span>召唤石突破核</span>
         </div>
-        <div className="stat-row">
-          <span>角色突破核</span>
-          <strong>{materialCount(materials, 'fire-character-uncap')}</strong>
-        </div>
-        <div className="stat-row">
-          <span>武器经验合金</span>
-          <strong>{materialCount(materials, 'fire-weapon-exp')}</strong>
-        </div>
-        <div className="stat-row">
-          <span>词条回路片</span>
-          <strong>{materialCount(materials, 'fire-weapon-skill')}</strong>
-        </div>
-        <div className="stat-row">
-          <span>召唤石经验晶</span>
-          <strong>{materialCount(materials, 'fire-summon-exp')}</strong>
-        </div>
-      </div>
 
-      <section className="panel content-panel">
-        <h2>角色</h2>
-        <div className="row-list">
-          {characters.map((character) => {
-            const state = save.characterStates[character?.id ?? ''];
+        <div className="upgrade-tabbar" role="tablist" aria-label="强化分页">
+          {[
+            ['character', '角色'],
+            ['weapon', '武器'],
+            ['summon', '召唤石'],
+          ].map(([value, label]) => (
+            <button
+              aria-selected={tab === value}
+              className={tab === value ? 'upgrade-tab upgrade-tab-active' : 'upgrade-tab'}
+              data-testid={`${value}-tab`}
+              key={value}
+              role="tab"
+              type="button"
+              onClick={() => setTab(value as UpgradeTab)}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
 
-            return (
-              <div className="list-item split-item" key={character?.id}>
-                <IconBadge label={character?.name ?? ''} />
-                <div>
-                  <strong>{character?.name}</strong>
-                  <span>
-                    Lv.{state?.level ?? character?.level}/{state?.levelCap ?? character?.maxLevel} / 突破 {state?.uncap ?? 0}
-                  </span>
-                </div>
-                <div className="inline-actions">
-                  <button
-                    className="secondary-button"
-                    disabled={materialCount(materials, 'fire-character-exp') < 1}
-                    type="button"
-                    onClick={() => runAction(() => upgradeCharacter(character?.id ?? ''), '角色升级完成')}
-                  >
-                    升级角色
-                  </button>
-                  <button
-                    className="secondary-button"
-                    disabled={materialCount(materials, 'fire-character-uncap') < 1}
-                    type="button"
-                    onClick={() => runAction(() => uncapCharacter(character?.id ?? ''), '角色突破完成')}
-                  >
-                    突破
-                  </button>
-                </div>
+        <div className="upgrade-grid" data-testid={`${tab}-grid`}>
+          {visibleItems.map((item) => (
+            <button className="upgrade-card" data-testid={`${tab}-card-${item.id}`} key={item.id} type="button" onClick={() => openActionModal(tab, item.id)}>
+              {item.equipped ? <span className="upgrade-equipped-badge">编成中</span> : null}
+              <div className="upgrade-card-icon">
+                <IconBadge label={item.name} />
               </div>
-            );
-          })}
-        </div>
-      </section>
-
-      <section className="panel content-panel">
-        <h2>武器</h2>
-        <div className="row-list">
-          {weapons.map((weapon) => {
-            const state = save.weaponStates[weapon?.id ?? ''];
-
-            return (
-              <div className="list-item split-item" key={weapon?.id}>
-                <IconBadge label={weapon?.name ?? ''} />
-                <div>
-                  <strong>{weapon?.name}</strong>
-                  <span>
-                    Lv.{state?.level ?? weapon?.level}/{state?.levelCap ?? weapon?.maxLevel} / 词条 Lv.{state?.skillLevel ?? 1}
-                  </span>
-                </div>
-                <div className="inline-actions">
-                  <button
-                    className="secondary-button"
-                    disabled={materialCount(materials, 'fire-weapon-exp') < 1}
-                    type="button"
-                    onClick={() => runAction(() => upgradeWeapon(weapon?.id ?? ''), '武器升级完成')}
-                  >
-                    升级
-                  </button>
-                  <button
-                    className="secondary-button"
-                    disabled={materialCount(materials, 'fire-weapon-skill') < 1}
-                    type="button"
-                    onClick={() => runAction(() => upgradeWeaponSkill(weapon?.id ?? ''), '词条升级完成')}
-                  >
-                    词条
-                  </button>
-                  <button
-                    className="secondary-button"
-                    disabled={materialCount(materials, 'fire-weapon-uncap') < 1}
-                    type="button"
-                    onClick={() => runAction(() => uncapWeapon(weapon?.id ?? ''), '武器突破完成')}
-                  >
-                    突破
-                  </button>
-                </div>
+              <div className="upgrade-card-body">
+                <strong>{item.name}</strong>
+                <span>
+                  Lv.{item.level}/{item.levelCap}
+                </span>
+                {item.skillLevel ? <span>SLv.{item.skillLevel}</span> : null}
+                {item.skillName ? <small>{getWeaponSkillText(item)}</small> : <small>突破 {item.uncap}</small>}
+                {renderStars(item, false)}
               </div>
-            );
-          })}
+            </button>
+          ))}
         </div>
-      </section>
 
-      <section className="panel content-panel">
-        <h2>召唤石</h2>
-        <div className="row-list">
-          {summons.map((summon) => {
-            const state = save.summonStates[summon?.id ?? ''];
-
-            return (
-              <div className="list-item split-item" key={summon?.id}>
-                <IconBadge label={summon?.name ?? ''} />
-                <div>
-                  <strong>{summon?.name}</strong>
-                  <span>
-                    Lv.{state?.level ?? summon?.level}/{state?.levelCap ?? summon?.maxLevel} / 突破 {state?.uncap ?? 0}
-                  </span>
-                </div>
-                <div className="inline-actions">
-                  <button
-                    className="secondary-button"
-                    disabled={materialCount(materials, 'fire-summon-exp') < 1}
-                    type="button"
-                    onClick={() => runAction(() => upgradeSummon(summon?.id ?? ''), '召唤石升级完成')}
-                  >
-                    升级
-                  </button>
-                  <button
-                    className="secondary-button"
-                    disabled={materialCount(materials, 'fire-summon-uncap') < 1}
-                    type="button"
-                    onClick={() => runAction(() => uncapSummon(summon?.id ?? ''), '召唤石突破完成')}
-                  >
-                    突破
-                  </button>
-                </div>
-              </div>
-            );
-          })}
+        <div className="upgrade-pagination">
+          <button className="secondary-button" disabled={currentPage <= 0} type="button" onClick={() => setPage(currentPage - 1)}>
+            上一页
+          </button>
+          <span data-testid={`${tab}-page-indicator`}>
+            {currentPage + 1} / {maxPage + 1}
+          </span>
+          <button className="secondary-button" disabled={currentPage >= maxPage} type="button" onClick={() => setPage(currentPage + 1)}>
+            下一页
+          </button>
         </div>
       </section>
 
       {message ? <p className="status-text">{message}</p> : null}
+
+      {actionState && currentActionItem ? (
+        <div className="slot-picker-backdrop upgrade-overlay" data-testid="upgrade-action-modal" onClick={closeActionModal}>
+          <div aria-modal="true" className="upgrade-action-modal" role="dialog" onClick={(event) => event.stopPropagation()}>
+            <div className="upgrade-action-head">
+              <IconBadge label={currentActionItem.name} />
+              <div className="upgrade-action-copy">
+                <strong>{currentActionItem.name}</strong>
+                <span>
+                  Lv.{currentActionItem.level}/{currentActionItem.levelCap}
+                  {currentActionItem.skillLevel ? ` / SLv.${currentActionItem.skillLevel}` : ''}
+                </span>
+                {renderStars(currentActionItem, false)}
+              </div>
+            </div>
+            <div className="upgrade-action-buttons">
+              {(actionState.tab === 'character'
+                ? characterActions(actionState.itemId)
+                : actionState.tab === 'weapon'
+                  ? weaponActions(actionState.itemId)
+                  : summonActions(actionState.itemId)
+              ).map((action) => (
+                <button className="secondary-button" data-testid={`action-${action.label}`} key={action.label} type="button" onClick={action.open}>
+                  {action.label}
+                </button>
+              ))}
+              <button className="secondary-button" type="button" onClick={closeActionModal}>
+                取消
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {operationState ? (
+        <div className="slot-picker-backdrop upgrade-overlay" data-testid="upgrade-confirm-dialog" onClick={closeOperation}>
+          <div aria-modal="true" className="slot-picker-modal upgrade-modal upgrade-large-modal" role="dialog" onClick={(event) => event.stopPropagation()}>
+            <div className="upgrade-compact-header">
+              <div className="upgrade-compact-titleblock">
+                <strong className="upgrade-compact-name">{currentOperationItem?.name ?? ''}</strong>
+                <h3 className="upgrade-compact-title">{'dismantle' in operationState ? '拆解' : getActionLabel(operationState.definition.action)}</h3>
+              </div>
+            </div>
+
+            <div className="upgrade-operation-body upgrade-operation-body-compact">
+              {'dismantle' in operationState ? (
+                <div className="panel upgrade-preview-panel upgrade-preview-panel-compact">
+                  {dismantleRewards.map((reward) => (
+                    <div className="stat-row" key={reward.materialId}>
+                      <span>{reward.label}</span>
+                      <strong>{reward.quantity}</strong>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <>
+                  <div className="upgrade-compact-meta">
+                    <div className="upgrade-preview-summary">
+                      <div className="upgrade-preview-icon">
+                        <IconBadge label={currentOperationItem?.name ?? ''} />
+                      </div>
+                      <div className="upgrade-preview-copy">
+                        <strong>{currentOperationItem?.name}</strong>
+                        <span>
+                          Lv.{currentOperationItem?.level ?? 1}/{currentOperationItem?.levelCap ?? 1}
+                          {currentOperationItem?.skillLevel ? ` / SLv.${currentOperationItem.skillLevel}` : ''}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <label className="field upgrade-target-field upgrade-target-field-compact" htmlFor="upgrade-target-select">
+                    <span className="upgrade-target-label">{operationState.definition.targetLabel}</span>
+                    <div
+                      className="upgrade-wheel-picker"
+                      data-testid="upgrade-target-select"
+                      id="upgrade-target-select"
+                      style={
+                        {
+                          '--upgrade-picker-item-height': `${PICKER_ITEM_HEIGHT}px`,
+                          '--upgrade-picker-viewport-height': `${PICKER_VIEWPORT_HEIGHT}px`,
+                        } as React.CSSProperties
+                      }
+                    >
+                      <div className="upgrade-wheel-highlight" />
+                      <div
+                        className="upgrade-wheel-viewport"
+                        data-testid="upgrade-target-options"
+                        ref={pickerViewportRef}
+                        role="listbox"
+                        tabIndex={0}
+                        onScroll={(event) => {
+                          const nextIndex = clampIndex(Math.round(event.currentTarget.scrollTop / PICKER_ITEM_HEIGHT), pickerOptions.length);
+                          const nextValue = pickerOptions[nextIndex]?.value;
+                          if (nextValue !== undefined && nextValue !== targetValue) setTargetValue(nextValue);
+                        }}
+                      >
+                        <div style={{ paddingTop: `${PICKER_SIDE_PADDING}px`, paddingBottom: `${PICKER_SIDE_PADDING}px` }}>
+                          {pickerOptions.map((option, index) => (
+                            <button
+                              aria-selected={index === selectedPickerIndex}
+                              className={index === selectedPickerIndex ? 'upgrade-wheel-option upgrade-wheel-option-active' : 'upgrade-wheel-option'}
+                              key={option.value}
+                              type="button"
+                              onClick={() => {
+                                setTargetValue(option.value);
+                                scrollPickerViewport(pickerViewportRef.current, index * PICKER_ITEM_HEIGHT, 'smooth');
+                              }}
+                            >
+                              {option.label}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  </label>
+
+                  <div className="panel upgrade-preview-panel upgrade-preview-panel-compact">
+                    {compactRows.map((row, index) => {
+                      const shouldPrefixCost =
+                        operationState &&
+                        !('dismantle' in operationState) &&
+                        index > 0;
+
+                      return (
+                        <div className="stat-row" key={`${row.label}-${row.value}`}>
+                          <span>{shouldPrefixCost ? `消耗${row.label}` : row.label}</span>
+                          <strong>{row.value}</strong>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </>
+              )}
+
+              {currentPreview?.error ? <p className="status-text">{currentPreview.error}</p> : null}
+
+              <div className="actions upgrade-compact-actions">
+                <button className="primary-button" type="button" onClick={confirmOperation}>
+                  确认
+                </button>
+                <button className="secondary-button" type="button" onClick={closeOperation}>
+                  取消
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </>
   );
 }

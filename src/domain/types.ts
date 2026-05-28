@@ -65,6 +65,33 @@ export type Passive = {
   modifiers: Modifier[];
 };
 
+export type PassiveUnlockRule = {
+  uncap: number;
+  level?: number;
+};
+
+export type ProgressionRule = {
+  baseLevelCap: number;
+  normalUncapCount: number;
+  normalUncapStep: number;
+  normalMaxLevelCap: number;
+  transcendenceEnabled?: boolean;
+  transcendenceStepCount?: number;
+  transcendenceCapStep?: number;
+  finalLevelCap: number;
+};
+
+export type CharacterProgressionRule = ProgressionRule & {
+  passiveUnlocks: [PassiveUnlockRule, PassiveUnlockRule];
+};
+
+export type WeaponProgressionRule = ProgressionRule & {
+  baseSkillCap: number;
+  maxUncapSkillCap: number;
+};
+
+export type SummonProgressionRule = ProgressionRule;
+
 export type ChargeAttack = {
   id: string;
   name: string;
@@ -84,6 +111,7 @@ export type Character = {
   assetKey: string;
   assetMode?: AssetMode;
   passives: [Passive, Passive];
+  progression?: Partial<CharacterProgressionRule>;
   chargeAttack: ChargeAttack;
 };
 
@@ -106,6 +134,7 @@ export type Weapon = {
   assetKey: string;
   assetMode?: AssetMode;
   skills: WeaponSkill[];
+  progression?: Partial<WeaponProgressionRule>;
 };
 
 export type Summon = {
@@ -123,6 +152,7 @@ export type Summon = {
   };
   assetKey: string;
   assetMode?: AssetMode;
+  progression?: Partial<SummonProgressionRule>;
 };
 
 export type Enemy = {
