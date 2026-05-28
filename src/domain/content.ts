@@ -299,7 +299,7 @@ export const initialQuests: Quest[] = [
     runDurationMs: 7 * 60_000,
     enemyId: 'enemy-wind-sentinel-2',
     unlockAfterQuestId: 'quest-main-1',
-    firstClearRewards: [{ itemId: 'gacha-ticket', kind: 'ticket', quantity: 1, chance: 1 }],
+    firstClearRewards: [{ itemId: 'gacha-ticket', kind: 'currency', quantity: 1, chance: 1 }],
     dropTable: [{ itemId: 'weapon-furnace-grid-blade', kind: 'weapon', quantity: 1, chance: 0.12 }],
   },
   {

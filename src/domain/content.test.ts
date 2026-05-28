@@ -3,7 +3,11 @@ import { initialCharacters, initialEnemies, initialQuests, initialWeapons, initi
 
 describe('initial content', () => {
   it('contains one fire route with four starter characters', () => {
+    const firstCharacterPassives = initialCharacters[0].passives;
+
     expect(initialCharacters).toHaveLength(4);
+    expect(firstCharacterPassives[0].id).toBe('passive-leya-solar-oath');
+    expect(firstCharacterPassives[1].id).toBe('passive-leya-charge-loop');
     expect(initialCharacters.every((character) => character.element === 'fire')).toBe(true);
     expect(initialCharacters.every((character) => character.passives.length === 2)).toBe(true);
     expect(initialCharacters.every((character) => character.level === 1)).toBe(true);
@@ -51,9 +55,15 @@ describe('initial content', () => {
 
   it('uses planned quest reward tables', () => {
     const allRewards = initialQuests.flatMap((quest) => [...quest.firstClearRewards, ...quest.dropTable]);
+    const questMain2GachaTicket = initialQuests
+      .find((quest) => quest.id === 'quest-main-2')
+      ?.firstClearRewards.find((reward) => reward.itemId === 'gacha-ticket');
+    const allowedRewardKinds = new Set(['material', 'weapon', 'summon', 'currency']);
 
     expect(initialQuests.every((quest) => Array.isArray(quest.firstClearRewards))).toBe(true);
     expect(initialQuests.every((quest) => Array.isArray(quest.dropTable))).toBe(true);
+    expect(questMain2GachaTicket?.kind).toBe('currency');
+    expect(allRewards.every((reward) => allowedRewardKinds.has(reward.kind))).toBe(true);
     expect(
       allRewards.every(
         (reward) =>

@@ -68,7 +68,7 @@ export type Character = {
   stats: StatBlock;
   assetKey: string;
   assetMode?: AssetMode;
-  passives: Passive[];
+  passives: [Passive, Passive];
   chargeAttack: ChargeAttack;
 };
 
@@ -122,7 +122,7 @@ export type Enemy = {
 
 export type RewardTableEntry = {
   itemId: string;
-  kind: 'currency' | 'ticket' | 'weapon' | 'summon';
+  kind: 'material' | 'weapon' | 'summon' | 'currency';
   quantity: number;
   chance: number;
 };
