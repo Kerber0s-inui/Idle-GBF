@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { initialCharacters, initialEnemies, initialQuests, initialWeapons, initialSummons } from './content';
 
 describe('initial content', () => {
+  const isFiniteInteger = (value: number) => Number.isFinite(value) && Number.isInteger(value);
+  const isNonNegativeFinite = (value: number) => Number.isFinite(value) && value >= 0;
   const allModifiers = [
     ...initialCharacters.flatMap((character) => character.passives.flatMap((passive) => passive.modifiers)),
     ...initialWeapons.flatMap((weapon) => weapon.skills.flatMap((skill) => skill.modifiers)),
@@ -42,6 +44,7 @@ describe('initial content', () => {
 
   it('includes labels on every content modifier', () => {
     expect(allModifiers.every((modifier) => typeof modifier.label === 'string')).toBe(true);
+    expect(allModifiers.every((modifier) => modifier.label.trim().length > 0)).toBe(true);
   });
 
   it('uses planned weapon skill and summon progression fields', () => {
@@ -89,9 +92,11 @@ describe('initial content', () => {
     expect(
       initialQuests.every((quest) => quest.unlockAfterQuestId === undefined || questIds.has(quest.unlockAfterQuestId)),
     ).toBe(true);
-    expect(initialQuests.every((quest) => quest.dropTable.every((reward) => itemExists(reward.kind, reward.itemId)))).toBe(
-      true,
-    );
+    expect(
+      initialQuests.every((quest) =>
+        [...quest.firstClearRewards, ...quest.dropTable].every((reward) => itemExists(reward.kind, reward.itemId)),
+      ),
+    ).toBe(true);
   });
 
   it('keeps numeric content values within valid ranges', () => {
@@ -103,10 +108,48 @@ describe('initial content', () => {
     ];
     const leveledContent = [...initialCharacters, ...initialWeapons, ...initialSummons];
 
-    expect(allRewards.every((reward) => reward.chance >= 0 && reward.chance <= 1 && reward.quantity > 0)).toBe(true);
-    expect(allStats.every((stats) => stats.hp >= 0 && stats.atk >= 0 && stats.defense >= 0)).toBe(true);
-    expect(initialEnemies.every((enemy) => enemy.normalAttackDamage > 0)).toBe(true);
-    expect(leveledContent.every((entry) => entry.level >= 1 && entry.level <= entry.maxLevel)).toBe(true);
+    expect(
+      allRewards.every(
+        (reward) =>
+          isFiniteInteger(reward.quantity) &&
+          reward.quantity > 0 &&
+          Number.isFinite(reward.chance) &&
+          reward.chance >= 0 &&
+          reward.chance <= 1,
+      ),
+    ).toBe(true);
+    expect(allStats.every((stats) => isNonNegativeFinite(stats.hp) && isNonNegativeFinite(stats.atk) && isNonNegativeFinite(stats.defense))).toBe(
+      true,
+    );
+    expect(initialEnemies.every((enemy) => Number.isFinite(enemy.normalAttackDamage) && enemy.normalAttackDamage > 0)).toBe(
+      true,
+    );
+    expect(
+      leveledContent.every(
+        (entry) =>
+          isFiniteInteger(entry.level) &&
+          isFiniteInteger(entry.maxLevel) &&
+          entry.level >= 1 &&
+          entry.level <= entry.maxLevel,
+      ),
+    ).toBe(true);
+    expect(initialQuests.every((quest) => isFiniteInteger(quest.difficulty) && quest.difficulty > 0)).toBe(true);
+    expect(initialQuests.every((quest) => isFiniteInteger(quest.runDurationMs) && quest.runDurationMs > 0)).toBe(true);
+    expect(
+      initialCharacters.every(
+        (character) =>
+          Number.isFinite(character.chargeAttack.multiplier) &&
+          character.chargeAttack.multiplier > 0 &&
+          Number.isFinite(character.chargeAttack.chargeCost) &&
+          character.chargeAttack.chargeCost > 0 &&
+          Number.isFinite(character.chargeAttack.cap) &&
+          character.chargeAttack.cap > 0,
+      ),
+    ).toBe(true);
+    expect(initialWeapons.every((weapon) => weapon.skills.every((skill) => isFiniteInteger(skill.level) && skill.level >= 1))).toBe(
+      true,
+    );
+    expect(initialSummons.every((summon) => Number.isFinite(summon.aura.boost) && summon.aura.boost >= 0)).toBe(true);
     expect(allModifiers.every((modifier) => Number.isFinite(modifier.value))).toBe(true);
   });
 });
