@@ -1,8 +1,9 @@
 import { useMemo, useState } from 'react';
 import { simulateBattle, type BattleEvent } from '../../domain/battle';
 import { initialCharacters, initialEnemies, initialQuests, initialSummons, initialWeapons } from '../../domain/content';
+import { getRewardLabel } from '../../domain/itemData';
 import { applyCharacterProgression, applySummonProgression, applyWeaponProgression } from '../../domain/progression';
-import type { RewardStack } from '../../domain/rewards';
+import { getQuestDropPreview, type RewardStack } from '../../domain/rewards';
 import type { PartyLoadout, Quest, RewardTableEntry } from '../../domain/types';
 import { useGame } from '../../state/gameStore';
 import { BattleLog } from '../components/BattleLog';
@@ -22,7 +23,7 @@ function createLoadout(save: ReturnType<typeof useGame>['save']): PartyLoadout {
       weaponIds,
     },
     mainSummonId: summonIds[0] ?? '',
-    supportSummonId: summonIds[1],
+    summonIds,
   };
 }
 
@@ -65,10 +66,6 @@ function getQuestStatus(quest: Quest, clearedQuestIds: string[]): { label: strin
   return { label: '可挑战', tone: 'ready' };
 }
 
-function getRewardName(reward: RewardTableEntry) {
-  return reward.itemId;
-}
-
 function getRewardGroupLabel(kind: RewardTableEntry['kind']) {
   switch (kind) {
     case 'weapon':
@@ -78,6 +75,7 @@ function getRewardGroupLabel(kind: RewardTableEntry['kind']) {
     case 'currency':
       return '货币';
     case 'material':
+    case 'characterExp':
     case 'weaponExpMaterial':
     case 'summonExpMaterial':
     case 'characterUncapMaterial':
@@ -88,6 +86,11 @@ function getRewardGroupLabel(kind: RewardTableEntry['kind']) {
     default:
       return '掉落';
   }
+}
+
+function formatDropRate(reward: RewardTableEntry) {
+  if (reward.chance >= 1) return `固定 / x${reward.quantity}`;
+  return `${Math.round(reward.chance * 100)}% / x${reward.quantity}`;
 }
 
 export function ExpeditionScreen() {
@@ -119,7 +122,7 @@ export function ExpeditionScreen() {
     if (!dropModalQuest) return [];
 
     const groups = new Map<string, RewardTableEntry[]>();
-    for (const reward of dropModalQuest.dropTable) {
+    for (const reward of getQuestDropPreview(dropModalQuest)) {
       const label = getRewardGroupLabel(reward.kind);
       groups.set(label, [...(groups.get(label) ?? []), reward]);
     }
@@ -367,8 +370,8 @@ export function ExpeditionScreen() {
                   <div className="expedition-drop-list">
                     {group.rewards.map((reward) => (
                       <div className="stat-row expedition-drop-row" key={`${reward.kind}-${reward.itemId}`}>
-                        <span>{getRewardName(reward)}</span>
-                        <strong>{`${Math.round(reward.chance * 100)}% / x${reward.quantity}`}</strong>
+                        <span>{getRewardLabel(reward)}</span>
+                        <strong>{formatDropRate(reward)}</strong>
                       </div>
                     ))}
                   </div>

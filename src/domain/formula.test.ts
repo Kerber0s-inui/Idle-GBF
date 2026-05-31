@@ -53,7 +53,7 @@ describe('formula', () => {
     expect(lowHp.sections.enmity).toBeCloseTo(0.3, 4);
   });
 
-  it('caps critical rate, damage cap, drop rate, and sweep efficiency', () => {
+  it('caps critical rate, normal/charge attack caps, drop rate, and sweep efficiency', () => {
     const capped = clampModifierCaps({
       criticalRate: 1.7,
       damageCap: 0.8,
@@ -92,6 +92,22 @@ describe('formula', () => {
     expect(capped.dropRate).toBe(0);
     expect(capped.sweepEfficiency).toBe(0);
     expect(capped.damageReduction).toBe(0);
+  });
+
+  it('keeps generic damage cap separate from normal and charge caps', () => {
+    const capped = clampModifierCaps({
+      criticalRate: 0,
+      damageCap: 0.15,
+      normalAttackCap: 0.25,
+      chargeCap: 0.35,
+      dropRate: 0,
+      sweepEfficiency: 0,
+      damageReduction: 0,
+    });
+
+    expect(capped.damageCap).toBe(0.15);
+    expect(capped.normalAttackCap).toBe(0.25);
+    expect(capped.chargeCap).toBe(0.35);
   });
 
   it('links multiattack to charge gain', () => {

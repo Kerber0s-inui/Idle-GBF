@@ -1,5 +1,8 @@
 import { initialCharacters, initialSummons, initialWeapons } from './content';
 import {
+  applyCharacterProgression,
+  applySummonProgression,
+  applyWeaponProgression,
   getCurrentCharacterLevelCap,
   getCurrentSummonLevelCap,
   getCurrentWeaponLevelCap,
@@ -95,6 +98,10 @@ export interface GrowthPreviewSnapshot {
   levelCap?: number;
   skillLevel?: number;
   uncap?: number;
+  atk?: number;
+  hp?: number;
+  defense?: number;
+  skillLines?: string[];
 }
 
 export interface GrowthPreviewResult {
@@ -158,9 +165,42 @@ function cloneSave(save: SaveFile): SaveFile {
       currencies: { ...save.inventory.currencies },
     },
     formation: {
+      activeElement: save.formation.activeElement,
       characterIds: [...save.formation.characterIds],
       weaponIds: [...save.formation.weaponIds],
       summonIds: [...save.formation.summonIds],
+      teams: {
+        fire: {
+          characterIds: [...save.formation.teams.fire.characterIds],
+          weaponIds: [...save.formation.teams.fire.weaponIds],
+          summonIds: [...save.formation.teams.fire.summonIds],
+        },
+        water: {
+          characterIds: [...save.formation.teams.water.characterIds],
+          weaponIds: [...save.formation.teams.water.weaponIds],
+          summonIds: [...save.formation.teams.water.summonIds],
+        },
+        earth: {
+          characterIds: [...save.formation.teams.earth.characterIds],
+          weaponIds: [...save.formation.teams.earth.weaponIds],
+          summonIds: [...save.formation.teams.earth.summonIds],
+        },
+        wind: {
+          characterIds: [...save.formation.teams.wind.characterIds],
+          weaponIds: [...save.formation.teams.wind.weaponIds],
+          summonIds: [...save.formation.teams.wind.summonIds],
+        },
+        light: {
+          characterIds: [...save.formation.teams.light.characterIds],
+          weaponIds: [...save.formation.teams.light.weaponIds],
+          summonIds: [...save.formation.teams.light.summonIds],
+        },
+        dark: {
+          characterIds: [...save.formation.teams.dark.characterIds],
+          weaponIds: [...save.formation.teams.dark.weaponIds],
+          summonIds: [...save.formation.teams.dark.summonIds],
+        },
+      },
     },
     characterStates: Object.fromEntries(Object.entries(save.characterStates).map(([id, state]) => [id, { ...state }])),
     weaponStates: Object.fromEntries(Object.entries(save.weaponStates).map(([id, state]) => [id, { ...state }])),
@@ -176,6 +216,44 @@ function levelFromExp(exp: number, levelCap: number) {
 
 function materialCount(save: SaveFile, materialId: string) {
   return save.inventory.materials[materialId] ?? 0;
+}
+
+function buildCharacterSnapshot(character: Character, state: CharacterGrowthState): GrowthPreviewSnapshot {
+  const progressed = applyCharacterProgression(character, state);
+  return {
+    level: state.level,
+    levelCap: state.levelCap,
+    uncap: state.uncap,
+    atk: progressed.stats.atk,
+    hp: progressed.stats.hp,
+    defense: progressed.stats.defense,
+  };
+}
+
+function buildWeaponSnapshot(weapon: Weapon, state: WeaponGrowthState): GrowthPreviewSnapshot {
+  const progressed = applyWeaponProgression(weapon, state);
+  return {
+    level: state.level,
+    levelCap: state.levelCap,
+    skillLevel: state.skillLevel,
+    uncap: state.uncap,
+    atk: progressed.stats.atk,
+    hp: progressed.stats.hp,
+    defense: progressed.stats.defense,
+    skillLines: progressed.skills.slice(0, 2).map((skill) => skill.modifiers.map((modifier) => modifier.label).join(' / ')),
+  };
+}
+
+function buildSummonSnapshot(summon: Summon, state: SummonGrowthState): GrowthPreviewSnapshot {
+  const progressed = applySummonProgression(summon, state);
+  return {
+    level: state.level,
+    levelCap: state.levelCap,
+    uncap: state.uncap,
+    atk: progressed.stats.atk,
+    hp: progressed.stats.hp,
+    defense: progressed.stats.defense,
+  };
 }
 
 function materialLabel(materialId: string) {
@@ -324,11 +402,11 @@ function setSummonLevel(state: SummonGrowthState, level: number) {
 }
 
 function isWeaponEquipped(save: SaveFile, weaponId: string) {
-  return save.formation.weaponIds.includes(weaponId);
+  return Object.values(save.formation.teams).some((team) => team.weaponIds.includes(weaponId));
 }
 
 function isSummonEquipped(save: SaveFile, summonId: string) {
-  return save.formation.summonIds.includes(summonId);
+  return Object.values(save.formation.teams).some((team) => team.summonIds.includes(summonId));
 }
 
 function buildSelectionDefinition(input: {
@@ -369,8 +447,8 @@ function previewCharacterUpgradeInternal(save: SaveFile, characterId: string, ta
     targetValue: resolvedTarget,
     targetLabel: `Lv.${resolvedTarget}`,
     costs: [{ materialId: CHARACTER_EXP_MATERIAL, label: materialLabel(CHARACTER_EXP_MATERIAL), quantity: cost }],
-    current: { level: currentState.level, levelCap: currentState.levelCap, uncap: currentState.uncap },
-    next: { level: nextState.level, levelCap: nextState.levelCap, uncap: nextState.uncap },
+    current: buildCharacterSnapshot(character, currentState),
+    next: buildCharacterSnapshot(character, nextState),
     spent: cost,
     requested: resolvedTarget,
     maxAllowed: options[options.length - 1]?.value ?? resolvedTarget,
@@ -400,8 +478,8 @@ function previewCharacterUncapInternal(save: SaveFile, characterId: string, targ
     targetValue: resolvedTarget,
     targetLabel: `阶段${resolvedTarget}`,
     costs: [{ materialId: CHARACTER_UNCAP_MATERIAL, label: materialLabel(CHARACTER_UNCAP_MATERIAL), quantity: cost }],
-    current: { level: currentState.level, levelCap: currentState.levelCap, uncap: currentState.uncap },
-    next: { level: nextState.level, levelCap: nextState.levelCap, uncap: nextState.uncap },
+    current: buildCharacterSnapshot(character, currentState),
+    next: buildCharacterSnapshot(character, nextState),
     spent: cost,
     requested: resolvedTarget,
     maxAllowed: options[options.length - 1]?.value ?? resolvedTarget,
@@ -429,18 +507,8 @@ function previewWeaponUpgradeInternal(save: SaveFile, weaponId: string, targetLe
     targetValue: resolvedTarget,
     targetLabel: `Lv.${resolvedTarget}`,
     costs: [{ materialId: WEAPON_EXP_MATERIAL, label: materialLabel(WEAPON_EXP_MATERIAL), quantity: cost }],
-    current: {
-      level: currentState.level,
-      levelCap: currentState.levelCap,
-      skillLevel: currentState.skillLevel,
-      uncap: currentState.uncap,
-    },
-    next: {
-      level: nextState.level,
-      levelCap: nextState.levelCap,
-      skillLevel: nextState.skillLevel,
-      uncap: nextState.uncap,
-    },
+    current: buildWeaponSnapshot(weapon, currentState),
+    next: buildWeaponSnapshot(weapon, nextState),
     spent: cost,
     requested: resolvedTarget,
     maxAllowed: options[options.length - 1]?.value ?? resolvedTarget,
@@ -467,18 +535,8 @@ function previewWeaponSkillUpgradeInternal(save: SaveFile, weaponId: string, tar
     targetValue: resolvedTarget,
     targetLabel: `SLv.${resolvedTarget}`,
     costs: [{ materialId: WEAPON_SKILL_MATERIAL, label: materialLabel(WEAPON_SKILL_MATERIAL), quantity: cost }],
-    current: {
-      level: currentState.level,
-      levelCap: currentState.levelCap,
-      skillLevel: currentState.skillLevel,
-      uncap: currentState.uncap,
-    },
-    next: {
-      level: nextState.level,
-      levelCap: nextState.levelCap,
-      skillLevel: nextState.skillLevel,
-      uncap: nextState.uncap,
-    },
+    current: buildWeaponSnapshot(weapon, currentState),
+    next: buildWeaponSnapshot(weapon, nextState),
     spent: cost,
     requested: resolvedTarget,
     maxAllowed: options[options.length - 1]?.value ?? resolvedTarget,
@@ -509,18 +567,8 @@ function previewWeaponUncapInternal(save: SaveFile, weaponId: string, targetUnca
     targetValue: resolvedTarget,
     targetLabel: `阶段${resolvedTarget}`,
     costs: [{ materialId: WEAPON_UNCAP_MATERIAL, label: materialLabel(WEAPON_UNCAP_MATERIAL), quantity: cost }],
-    current: {
-      level: currentState.level,
-      levelCap: currentState.levelCap,
-      skillLevel: currentState.skillLevel,
-      uncap: currentState.uncap,
-    },
-    next: {
-      level: nextState.level,
-      levelCap: nextState.levelCap,
-      skillLevel: nextState.skillLevel,
-      uncap: nextState.uncap,
-    },
+    current: buildWeaponSnapshot(weapon, currentState),
+    next: buildWeaponSnapshot(weapon, nextState),
     spent: cost,
     requested: resolvedTarget,
     maxAllowed: options[options.length - 1]?.value ?? resolvedTarget,
@@ -548,8 +596,8 @@ function previewSummonUpgradeInternal(save: SaveFile, summonId: string, targetLe
     targetValue: resolvedTarget,
     targetLabel: `Lv.${resolvedTarget}`,
     costs: [{ materialId: SUMMON_EXP_MATERIAL, label: materialLabel(SUMMON_EXP_MATERIAL), quantity: cost }],
-    current: { level: currentState.level, levelCap: currentState.levelCap, uncap: currentState.uncap },
-    next: { level: nextState.level, levelCap: nextState.levelCap, uncap: nextState.uncap },
+    current: buildSummonSnapshot(summon, currentState),
+    next: buildSummonSnapshot(summon, nextState),
     spent: cost,
     requested: resolvedTarget,
     maxAllowed: options[options.length - 1]?.value ?? resolvedTarget,
@@ -579,8 +627,8 @@ function previewSummonUncapInternal(save: SaveFile, summonId: string, targetUnca
     targetValue: resolvedTarget,
     targetLabel: `阶段${resolvedTarget}`,
     costs: [{ materialId: SUMMON_UNCAP_MATERIAL, label: materialLabel(SUMMON_UNCAP_MATERIAL), quantity: cost }],
-    current: { level: currentState.level, levelCap: currentState.levelCap, uncap: currentState.uncap },
-    next: { level: nextState.level, levelCap: nextState.levelCap, uncap: nextState.uncap },
+    current: buildSummonSnapshot(summon, currentState),
+    next: buildSummonSnapshot(summon, nextState),
     spent: cost,
     requested: resolvedTarget,
     maxAllowed: options[options.length - 1]?.value ?? resolvedTarget,

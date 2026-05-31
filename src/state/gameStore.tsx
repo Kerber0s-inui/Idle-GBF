@@ -21,12 +21,13 @@ import {
 } from '../domain/growth';
 import type { RewardStack } from '../domain/rewards';
 import { createInitialSave, importSave, SaveFileSchema, type SaveFile } from '../domain/save';
-import type { RewardKind } from '../domain/types';
+import type { Element, RewardKind } from '../domain/types';
 import {
   getInitialCharacterLevelCap,
   getInitialSummonLevelCap,
   getInitialWeaponLevelCap,
 } from '../domain/progression';
+import { buildPartyPreviewSummary } from '../domain/partyBonuses';
 
 export const storageKey = 'idle-gbf-save-v1';
 const oneTimeMaterialGiftKey = 'idle-gbf-dev-material-gift-v1';
@@ -52,6 +53,7 @@ type GameContextValue = {
   upgradeSummon: (summonId: string, targetLevel: number) => void;
   uncapSummon: (summonId: string, targetUncap: number) => void;
   dismantleSummon: (summonId: string) => void;
+  setFormationElement: (element: Element) => void;
   setCharacterSlot: (slotIndex: number, characterId: string) => void;
   setWeaponSlot: (slotIndex: number, weaponId: string | null) => void;
   setSummonSlot: (slotIndex: number, summonId: string | null) => void;
@@ -217,6 +219,57 @@ function swapFixedFormationItem(items: string[], slotIndex: number, nextItemId: 
   return next;
 }
 
+function getActivePartyPreview(save: SaveFile) {
+  const characters = save.formation.characterIds
+    .map((id) => initialCharacters.find((character) => character.id === id))
+    .filter((character): character is (typeof initialCharacters)[number] => Boolean(character));
+  const weapons = save.formation.weaponIds
+    .filter((id): id is string => Boolean(id))
+    .map((id) => initialWeapons.find((weapon) => weapon.id === id))
+    .filter((weapon): weapon is (typeof initialWeapons)[number] => Boolean(weapon));
+  const summons = save.formation.summonIds
+    .filter((id): id is string => Boolean(id))
+    .map((id) => initialSummons.find((summon) => summon.id === id))
+    .filter((summon): summon is (typeof initialSummons)[number] => Boolean(summon));
+
+  return buildPartyPreviewSummary({ characters, weapons, summons });
+}
+
+type FormationState = SaveFile['formation'];
+type FormationTeam = FormationState['teams'][Element];
+
+function getActiveFormationTeam(formation: FormationState): FormationTeam {
+  return formation.teams[formation.activeElement];
+}
+
+function syncActiveFormationTeam(formation: FormationState, team: FormationTeam): FormationState {
+  return {
+    ...formation,
+    teams: {
+      ...formation.teams,
+      [formation.activeElement]: {
+        characterIds: [...team.characterIds],
+        weaponIds: [...team.weaponIds],
+        summonIds: [...team.summonIds],
+      },
+    },
+    characterIds: [...team.characterIds],
+    weaponIds: [...team.weaponIds],
+    summonIds: [...team.summonIds],
+  };
+}
+
+function switchFormationElement(formation: FormationState, element: Element): FormationState {
+  const team = formation.teams[element];
+  return {
+    ...formation,
+    activeElement: element,
+    characterIds: [...team.characterIds],
+    weaponIds: [...team.weaponIds],
+    summonIds: [...team.summonIds],
+  };
+}
+
 export function GameProvider({ children, now = () => Date.now(), random = Math.random }: GameProviderProps) {
   const initialSaveRef = useRef<SaveFile | null>(null);
   if (!initialSaveRef.current) initialSaveRef.current = readInitialSave(now());
@@ -262,6 +315,7 @@ export function GameProvider({ children, now = () => Date.now(), random = Math.r
           if (current.activeRun) throw new Error('已有周回进行中');
 
           const startedAt = now();
+          const partyPreview = getActivePartyPreview(current);
           return {
             ...current,
             updatedAt: startedAt,
@@ -269,7 +323,7 @@ export function GameProvider({ children, now = () => Date.now(), random = Math.r
               quest,
               requestedRuns: count,
               startedAt,
-              sweepEfficiency: 0,
+              sweepEfficiency: partyPreview.sweepEfficiency,
             }),
           };
         });
@@ -302,11 +356,12 @@ export function GameProvider({ children, now = () => Date.now(), random = Math.r
             };
           }
 
+          const partyPreview = getActivePartyPreview(current);
           const settlement = settleSweepRun({
             run: current.activeRun,
             quest,
             now: settledAt,
-            dropRateBonus: 0,
+            dropRateBonus: partyPreview.dropRate,
             random,
             allowPartialSettlement: true,
           });
@@ -456,18 +511,29 @@ export function GameProvider({ children, now = () => Date.now(), random = Math.r
       dismantleSummon(summonId) {
         updateSave((current) => ({ ...dismantleSummonGrowth(current, summonId), updatedAt: now() }));
       },
+      setFormationElement(element) {
+        updateSave((current) => {
+          if (current.formation.activeElement === element) return current;
+          return {
+            ...current,
+            updatedAt: now(),
+            formation: switchFormationElement(current.formation, element),
+          };
+        });
+      },
       setCharacterSlot(slotIndex, characterId) {
         assertFormationIndex(slotIndex, 4);
         updateSave((current) => {
           if (!current.inventory.characterIds.includes(characterId)) throw new Error('角色未持有');
-          const characterIds = swapFixedFormationItem(current.formation.characterIds, slotIndex, characterId);
+          const team = getActiveFormationTeam(current.formation);
+          const characterIds = swapFixedFormationItem(team.characterIds, slotIndex, characterId);
           return {
             ...current,
             updatedAt: now(),
-            formation: {
-              ...current.formation,
+            formation: syncActiveFormationTeam(current.formation, {
+              ...team,
               characterIds,
-            },
+            }),
           };
         });
       },
@@ -475,14 +541,15 @@ export function GameProvider({ children, now = () => Date.now(), random = Math.r
         assertFormationIndex(slotIndex, 10);
         updateSave((current) => {
           if (weaponId && !current.inventory.weaponIds.includes(weaponId)) throw new Error('武器未持有');
-          const weaponIds = swapFormationItem(current.formation.weaponIds, slotIndex, weaponId);
+          const team = getActiveFormationTeam(current.formation);
+          const weaponIds = swapFormationItem(team.weaponIds, slotIndex, weaponId);
           return {
             ...current,
             updatedAt: now(),
-            formation: {
-              ...current.formation,
+            formation: syncActiveFormationTeam(current.formation, {
+              ...team,
               weaponIds,
-            },
+            }),
           };
         });
       },
@@ -490,14 +557,15 @@ export function GameProvider({ children, now = () => Date.now(), random = Math.r
         assertFormationIndex(slotIndex, 5);
         updateSave((current) => {
           if (summonId && !current.inventory.summonIds.includes(summonId)) throw new Error('召唤石未持有');
-          const summonIds = swapFormationItem(current.formation.summonIds, slotIndex, summonId);
+          const team = getActiveFormationTeam(current.formation);
+          const summonIds = swapFormationItem(team.summonIds, slotIndex, summonId);
           return {
             ...current,
             updatedAt: now(),
-            formation: {
-              ...current.formation,
+            formation: syncActiveFormationTeam(current.formation, {
+              ...team,
               summonIds,
-            },
+            }),
           };
         });
       },

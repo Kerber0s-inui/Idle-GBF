@@ -15,6 +15,8 @@ describe('save', () => {
 
     expect(imported.version).toBe(2);
     expect(imported.createdAt).toBe(1234);
+    expect(imported.formation.activeElement).toBe('fire');
+    expect(imported.formation.teams.wind.characterIds).toHaveLength(4);
   });
 
   it('exports with a refreshed updatedAt without mutating the original save', () => {

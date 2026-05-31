@@ -33,18 +33,18 @@ export interface CappedModifiers {
   damageReduction: number;
 }
 
-function sumModifiers(modifiers: Modifier[], type: Modifier['type'], category?: Modifier['category']) {
-  return modifiers
-    .filter((modifier) => modifier.type === type && (category === undefined || modifier.category === category))
-    .reduce((total, modifier) => total + toFiniteNumber(modifier.value), 0);
-}
-
 function toFiniteNumber(value: number, fallback = 0) {
   return Number.isFinite(value) ? value : fallback;
 }
 
 function clamp(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, toFiniteNumber(value)));
+}
+
+export function sumModifiers(modifiers: Modifier[], type: Modifier['type'], category?: Modifier['category']) {
+  return modifiers
+    .filter((modifier) => modifier.type === type && (category === undefined || modifier.category === category))
+    .reduce((total, modifier) => total + toFiniteNumber(modifier.value), 0);
 }
 
 export function clampModifierCaps(input: CappedModifiers): CappedModifiers {
@@ -55,7 +55,7 @@ export function clampModifierCaps(input: CappedModifiers): CappedModifiers {
     chargeCap: clamp(input.chargeCap, 0, 0.5),
     dropRate: clamp(input.dropRate, 0, 0.5),
     sweepEfficiency: clamp(input.sweepEfficiency, -0.3, 0),
-    damageReduction: clamp(input.damageReduction, 0, 0.7)
+    damageReduction: clamp(input.damageReduction, 0, 0.7),
   };
 }
 
@@ -78,7 +78,11 @@ export function calculateAttackBreakdown(input: AttackBreakdownInput): AttackBre
     (1 + independent) *
     (1 + stamina + enmity);
 
-  return { attackKind: input.attackKind, finalAttack, sections: { normal, magna, ex, elemental, independent, stamina, enmity } };
+  return {
+    attackKind: input.attackKind,
+    finalAttack,
+    sections: { normal, magna, ex, elemental, independent, stamina, enmity },
+  };
 }
 
 export function calculateChargeGain(input: { baseGain: number; hitCount: number; chargeGainModifier: number }) {

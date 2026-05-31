@@ -63,7 +63,11 @@ describe('expedition screen', () => {
 
     await userEvent.click(screen.getByRole('tab', { name: 'BOSS' }));
     await userEvent.click(screen.getByTestId('expedition-quest-quest-boss-wind-1'));
-    await userEvent.click(screen.getByRole('button', { name: '查看' }));
+    await userEvent.click(screen.getAllByRole('button', { name: '查看' })[0]);
+
+    expect(screen.getByText('余烬芯片')).toBeInTheDocument();
+    expect(screen.getByText('炉心核心')).toBeInTheDocument();
+    expect(screen.getAllByText('固定 / x1').length).toBeGreaterThan(0);
 
     const minusButton = screen.getByRole('button', { name: '减少回数' });
     const plusButton = screen.getByRole('button', { name: '增加回数' });
@@ -92,6 +96,7 @@ describe('expedition screen', () => {
     await userEvent.click(screen.getAllByRole('button', { name: '查看' })[0]);
     expect(screen.getByRole('dialog', { name: '副本掉落' })).toBeInTheDocument();
     expect(screen.getByText('掉落预览')).toBeInTheDocument();
+    expect(screen.getByText('余烬芯片')).toBeInTheDocument();
 
     await userEvent.click(screen.getByRole('button', { name: '关闭' }));
     await userEvent.click(screen.getByRole('tab', { name: 'BOSS' }));

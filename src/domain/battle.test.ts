@@ -7,10 +7,10 @@ const baseLoadout = {
   characterIds: initialCharacters.map((character) => character.id),
   weaponGrid: {
     mainWeaponId: initialWeapons[0].id,
-    weaponIds: initialWeapons.map((weapon) => weapon.id)
+    weaponIds: initialWeapons.map((weapon) => weapon.id),
   },
   mainSummonId: initialSummons[0].id,
-  supportSummonId: initialSummons[1].id
+  summonIds: initialSummons.map((summon) => summon.id),
 };
 
 const testEnemy: Enemy = {
@@ -71,9 +71,10 @@ function makeLoadout(characters: Character[], weapons: Weapon[] = [testWeapon]):
     characterIds: characters.map((character) => character.id),
     weaponGrid: {
       mainWeaponId: weapons[0].id,
-      weaponIds: weapons.map((weapon) => weapon.id)
+      weaponIds: weapons.map((weapon) => weapon.id),
     },
-    mainSummonId: testSummon.id
+    mainSummonId: testSummon.id,
+    summonIds: [testSummon.id],
   };
 }
 
@@ -330,10 +331,10 @@ describe('battle simulation', () => {
     const boostedDamage = boosted.turns[0].events.find((event) => event.actor === cappedAttacker.name && event.kind === 'chargeAttack')?.damage;
 
     expect(baselineDamage).toBe(1_000);
-    expect(boostedDamage).toBe(2_000);
+    expect(boostedDamage).toBe(1_500);
   });
 
-  it('raises charge attack damage cap with damage cap modifiers', () => {
+  it('does not let generic damage cap modifiers raise charge attack caps', () => {
     const cappedAttacker = makeCharacter({
       id: 'damage-cap-attacker',
       name: 'Damage Cap Attacker',
@@ -374,6 +375,82 @@ describe('battle simulation', () => {
     });
 
     expect(firstChargeDamage(baseline, baselineAttacker.name)).toBe(1_000);
-    expect(firstChargeDamage(boosted, cappedAttacker.name)).toBe(2_000);
+    expect(firstChargeDamage(boosted, cappedAttacker.name)).toBe(1_000);
+  });
+
+  it('shares equipped summon white stats across the party but only uses the main summon aura', () => {
+    const attacker = makeCharacter({
+      id: 'summon-grid-attacker',
+      name: 'Summon Grid Attacker',
+      stats: { hp: 1_000, atk: 1_000, defense: 100 },
+      chargeAttack: { id: 'summon-grid-ca', name: 'Summon Grid CA', multiplier: 1, chargeCost: 70, cap: 200_000 },
+    });
+    const magnaWeapon: Weapon = {
+      ...testWeapon,
+      id: 'summon-grid-weapon',
+      skills: [
+        {
+          id: 'summon-grid-magna',
+          name: 'Magna Attack',
+          level: 1,
+          modifiers: [{ id: 'summon-grid-magna-mod', label: 'Magna +100%', type: 'attack', value: 1, category: 'magna', source: 'weapon' }],
+        },
+      ],
+    };
+    const mainSummon: Summon = {
+      ...testSummon,
+      id: 'summon-grid-main',
+      aura: { label: 'Magna boost', target: 'magna', boost: 1 },
+      stats: { hp: 0, atk: 0, defense: 0 },
+    };
+    const supportSummon: Summon = {
+      ...testSummon,
+      id: 'summon-grid-support',
+      aura: { label: 'Normal boost', target: 'normal', boost: 1 },
+      stats: { hp: 0, atk: 900, defense: 0 },
+    };
+    const boosted = simulateBattle({
+      characters: [attacker],
+      weapons: [magnaWeapon],
+      summons: [mainSummon, supportSummon],
+      enemy: testEnemy,
+      loadout: {
+        characterIds: [attacker.id],
+        weaponGrid: { mainWeaponId: magnaWeapon.id, weaponIds: [magnaWeapon.id] },
+        mainSummonId: mainSummon.id,
+        summonIds: [mainSummon.id, supportSummon.id],
+      },
+      random: () => 0.99,
+    });
+    const withoutSupportStat = simulateBattle({
+      characters: [attacker],
+      weapons: [magnaWeapon],
+      summons: [mainSummon],
+      enemy: testEnemy,
+      loadout: {
+        characterIds: [attacker.id],
+        weaponGrid: { mainWeaponId: magnaWeapon.id, weaponIds: [magnaWeapon.id] },
+        mainSummonId: mainSummon.id,
+        summonIds: [mainSummon.id],
+      },
+      random: () => 0.99,
+    });
+    const withSupportAsMain = simulateBattle({
+      characters: [attacker],
+      weapons: [magnaWeapon],
+      summons: [mainSummon, supportSummon],
+      enemy: testEnemy,
+      loadout: {
+        characterIds: [attacker.id],
+        weaponGrid: { mainWeaponId: magnaWeapon.id, weaponIds: [magnaWeapon.id] },
+        mainSummonId: supportSummon.id,
+        summonIds: [mainSummon.id, supportSummon.id],
+      },
+      random: () => 0.99,
+    });
+
+    expect(firstChargeDamage(boosted, attacker.name)).toBe(8_550);
+    expect(firstChargeDamage(withoutSupportStat, attacker.name)).toBe(4_500);
+    expect(firstChargeDamage(withSupportAsMain, attacker.name)).toBe(5_700);
   });
 });

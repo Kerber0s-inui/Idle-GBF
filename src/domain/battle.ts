@@ -1,5 +1,6 @@
 import type { Character, Enemy, EnemySpecialTarget, Modifier, PartyLoadout, Summon, Weapon } from './types';
-import { calculateAttackBreakdown, calculateChargeGain, rollMultiattack } from './formula';
+import { calculateAttackBreakdown, calculateChargeGain, clampModifierCaps, rollMultiattack, sumModifiers } from './formula';
+import { getActiveBondModifiers } from './partyBonuses';
 import { getUnlockedCharacterPassives, type CharacterGrowthState } from './progression';
 
 const SAFETY_TURN_LIMIT = 200;
@@ -55,10 +56,6 @@ export interface SimulateBattleInput {
   random: () => number;
 }
 
-function sumModifiers(modifiers: Modifier[], type: Modifier['type']) {
-  return modifiers.filter((modifier) => modifier.type === type).reduce((total, modifier) => total + modifier.value, 0);
-}
-
 function getWeaponModifiers(weapons: Weapon[]): Modifier[] {
   return weapons.flatMap((weapon) => weapon.skills.flatMap((skill) => skill.modifiers));
 }
@@ -90,28 +87,34 @@ function getCharacterModifiers(
   const weaponModifiers = getWeaponModifiers(weapons);
   const activePassives = getActivePassives(character, characterStates);
   const partyWideCharacterModifiers = getPartyWideCharacterModifiers(party, characterStates);
+  const bondModifiers = getActiveBondModifiers(party);
   const selfModifiers = activePassives.flatMap((passive) =>
     passive.modifiers.filter((modifier) => !isPartyWideModifier(character, passive, modifier)),
   );
-  return [...weaponModifiers, ...partyWideCharacterModifiers, ...selfModifiers];
+  return [...weaponModifiers, ...partyWideCharacterModifiers, ...bondModifiers, ...selfModifiers];
 }
 
 function getSummonBoosts(loadout: PartyLoadout, summons: Summon[]) {
-  const activeSummons = summons.filter((summon) => summon.id === loadout.mainSummonId || summon.id === loadout.supportSummonId);
+  const auraSummons = summons.filter((summon) => summon.id === loadout.mainSummonId);
+  const equippedSummons = (loadout.summonIds?.length ? loadout.summonIds : [loadout.mainSummonId, loadout.supportSummonId])
+    .filter(Boolean)
+    .map((id) => summons.find((summon) => summon.id === id))
+    .filter((summon): summon is Summon => Boolean(summon));
   return {
-    magnaBoost: activeSummons.filter((summon) => summon.aura.target === 'magna').reduce((total, summon) => total + summon.aura.boost, 0),
-    normalBoost: activeSummons.filter((summon) => summon.aura.target === 'normal').reduce((total, summon) => total + summon.aura.boost, 0),
-    elementalAttack: activeSummons.filter((summon) => summon.aura.target === 'elemental').reduce((total, summon) => total + summon.aura.boost, 0),
-    sharedHp: activeSummons.reduce((total, summon) => total + summon.stats.hp, 0),
+    magnaBoost: auraSummons.filter((summon) => summon.aura.target === 'magna').reduce((total, summon) => total + summon.aura.boost, 0),
+    normalBoost: auraSummons.filter((summon) => summon.aura.target === 'normal').reduce((total, summon) => total + summon.aura.boost, 0),
+    totalAttack: equippedSummons.reduce((total, summon) => total + summon.stats.atk, 0),
+    totalHp: equippedSummons.reduce((total, summon) => total + summon.stats.hp, 0),
+    totalDefense: equippedSummons.reduce((total, summon) => total + summon.stats.defense, 0),
   };
 }
 
-function createElementAdvantageModifier(elementalAttack: number): Modifier {
+function createElementAdvantageModifier(): Modifier {
   return {
     id: 'element-advantage',
     label: '属性克制',
     type: 'attack',
-    value: 0.5 + elementalAttack,
+    value: 0.5,
     category: 'elemental',
     source: 'summon',
   };
@@ -123,6 +126,8 @@ function createCharacterSnapshot(input: {
   maxHp: number;
   charge: number;
   sharedWeaponAttack: number;
+  sharedSummonAttack: number;
+  sharedSummonDefense: number;
   modifiers: Modifier[];
 }): BattleSnapshotUnit {
   const defenseModifier = sumModifiers(input.modifiers, 'defense');
@@ -131,8 +136,8 @@ function createCharacterSnapshot(input: {
     name: input.character.name,
     hp: Math.max(0, Math.floor(input.hp)),
     maxHp: Math.max(1, Math.floor(input.maxHp)),
-    atk: Math.max(0, Math.floor(input.character.stats.atk + input.sharedWeaponAttack)),
-    defense: Math.max(0, Math.floor(input.character.stats.defense * (1 + defenseModifier))),
+    atk: Math.max(0, Math.floor(input.character.stats.atk + input.sharedWeaponAttack + input.sharedSummonAttack)),
+    defense: Math.max(0, Math.floor((input.character.stats.defense + input.sharedSummonDefense) * (1 + defenseModifier))),
     charge: Math.max(0, Math.floor(input.charge)),
   };
 }
@@ -192,7 +197,7 @@ function selectSpecialAction(input: {
   if (hpSpecial) return hpSpecial;
 
   const chargeMax = input.enemy.chargeMax ?? Number.POSITIVE_INFINITY;
-  return actions.find((action) => action.trigger.kind === 'chargeFull' && input.bossCharge > chargeMax) ?? null;
+  return actions.find((action) => action.trigger.kind === 'chargeFull' && input.bossCharge >= chargeMax) ?? null;
 }
 
 function enemyDamageToTarget(input: {
@@ -218,7 +223,9 @@ export function simulateBattle(input: SimulateBattleInput): BattleResult {
   const summonBoosts = getSummonBoosts(input.loadout, input.summons);
   const sharedWeaponAttack = gridWeapons.reduce((total, weapon) => total + weapon.stats.atk, 0) / Math.max(1, party.length);
   const sharedWeaponHp = gridWeapons.reduce((total, weapon) => total + weapon.stats.hp, 0) / Math.max(1, party.length);
-  const sharedSummonHp = summonBoosts.sharedHp / Math.max(1, party.length);
+  const sharedSummonAttack = summonBoosts.totalAttack / Math.max(1, party.length);
+  const sharedSummonHp = summonBoosts.totalHp / Math.max(1, party.length);
+  const sharedSummonDefense = summonBoosts.totalDefense / Math.max(1, party.length);
   const maxPartyHp = Object.fromEntries(
     party.map((character) => {
       const modifiers = getCharacterModifiers(character, party, gridWeapons, input.characterStates);
@@ -242,8 +249,17 @@ export function simulateBattle(input: SimulateBattleInput): BattleResult {
     for (const character of party) {
       if (partyHp[character.id] <= 0 || enemyHp <= 0) continue;
       const modifiers = getCharacterModifiers(character, party, gridWeapons, input.characterStates);
-      const attackModifiers = [...modifiers, createElementAdvantageModifier(summonBoosts.elementalAttack)];
-      const baseAttack = character.stats.atk + sharedWeaponAttack;
+      const cappedModifiers = clampModifierCaps({
+        criticalRate: sumModifiers(modifiers, 'criticalRate'),
+        damageCap: sumModifiers(modifiers, 'damageCap'),
+        normalAttackCap: sumModifiers(modifiers, 'normalAttackCap'),
+        chargeCap: sumModifiers(modifiers, 'chargeCap'),
+        dropRate: sumModifiers(modifiers, 'dropRate'),
+        sweepEfficiency: sumModifiers(modifiers, 'sweepEfficiency'),
+        damageReduction: 0,
+      });
+      const attackModifiers = [...modifiers, createElementAdvantageModifier()];
+      const baseAttack = character.stats.atk + sharedWeaponAttack + sharedSummonAttack;
       const hpRatio = partyHp[character.id] / maxPartyHp[character.id];
       const chargeGainModifier = sumModifiers(modifiers, 'chargeGain');
       const doubleAttackRate = sumModifiers(modifiers, 'doubleAttackRate');
@@ -255,6 +271,8 @@ export function simulateBattle(input: SimulateBattleInput): BattleResult {
           maxHp: maxPartyHp[character.id],
           charge: charge[character.id],
           sharedWeaponAttack,
+          sharedSummonAttack,
+          sharedSummonDefense,
           modifiers,
         });
 
@@ -268,9 +286,7 @@ export function simulateBattle(input: SimulateBattleInput): BattleResult {
           attackKind: 'chargeAttack',
         });
         const chargeDamageModifier = sumModifiers(modifiers, 'chargeDamage');
-        const chargeCapModifier = sumModifiers(modifiers, 'chargeCap');
-        const damageCapModifier = sumModifiers(modifiers, 'damageCap');
-        const cap = character.chargeAttack.cap * (1 + chargeCapModifier + damageCapModifier);
+        const cap = character.chargeAttack.cap * (1 + cappedModifiers.chargeCap);
         const uncappedDamage = breakdown.finalAttack * character.chargeAttack.multiplier * (1 + chargeDamageModifier);
         const damage = Math.max(1, Math.floor(Math.min(uncappedDamage, cap)));
         enemyHp = Math.max(0, enemyHp - damage);
@@ -298,7 +314,8 @@ export function simulateBattle(input: SimulateBattleInput): BattleResult {
           hpRatio,
           attackKind: 'normalAttack',
         });
-        const damage = Math.max(1, Math.floor((breakdown.finalAttack / 8) * multiattack.hitCount));
+        const perHitDamage = Math.min(440000 * (1 + cappedModifiers.normalAttackCap), breakdown.finalAttack / 8);
+        const damage = Math.max(1, Math.floor(perHitDamage * multiattack.hitCount));
         const chargeGain = calculateChargeGain({ baseGain: 10, hitCount: multiattack.hitCount, chargeGainModifier });
         enemyHp = Math.max(0, enemyHp - damage);
         charge[character.id] += chargeGain;
@@ -359,6 +376,8 @@ export function simulateBattle(input: SimulateBattleInput): BattleResult {
             maxHp: maxPartyHp[target.id],
             charge: charge[target.id],
             sharedWeaponAttack,
+            sharedSummonAttack,
+            sharedSummonDefense,
             modifiers: getCharacterModifiers(target, party, gridWeapons, input.characterStates),
           }),
         );
@@ -400,6 +419,8 @@ export function simulateBattle(input: SimulateBattleInput): BattleResult {
             maxHp: maxPartyHp[character.id],
             charge: charge[character.id],
             sharedWeaponAttack,
+            sharedSummonAttack,
+            sharedSummonDefense,
             modifiers: getCharacterModifiers(character, party, gridWeapons, input.characterStates),
           }),
         );
@@ -436,6 +457,8 @@ export function simulateBattle(input: SimulateBattleInput): BattleResult {
               maxHp: maxPartyHp[character.id],
               charge: charge[character.id],
               sharedWeaponAttack,
+              sharedSummonAttack,
+              sharedSummonDefense,
               modifiers: getCharacterModifiers(character, party, gridWeapons, input.characterStates),
             }),
             boss: createBossSnapshot(input.enemy, enemyHp, maxEnemyHp, bossCharge),

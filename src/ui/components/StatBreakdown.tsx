@@ -4,12 +4,13 @@ export type StatBreakdownRow = {
 };
 
 type StatBreakdownProps = {
+  className?: string;
   rows: StatBreakdownRow[];
 };
 
-export function StatBreakdown({ rows }: StatBreakdownProps) {
+export function StatBreakdown({ className, rows }: StatBreakdownProps) {
   return (
-    <dl className="stat-breakdown">
+    <dl className={className ? `stat-breakdown ${className}` : 'stat-breakdown'}>
       {rows.map((row) => (
         <div key={row.label}>
           <dt>{row.label}</dt>

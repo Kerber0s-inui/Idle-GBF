@@ -6,6 +6,22 @@ export interface RewardStack {
   quantity: number;
 }
 
+export function getStandardQuestDrops(quest: Pick<Quest, 'difficulty'>): RewardStack[] {
+  const rewards: RewardStack[] = [{ itemId: 'ember-chip', kind: 'material', quantity: 1 }];
+  if (quest.difficulty >= 2) rewards.push({ itemId: 'furnace-core', kind: 'material', quantity: 1 });
+  return rewards;
+}
+
+export function getQuestDropPreview(quest: Pick<Quest, 'difficulty' | 'dropTable'>): RewardTableEntry[] {
+  return [
+    ...getStandardQuestDrops(quest).map((reward) => ({
+      ...reward,
+      chance: 1,
+    })),
+    ...quest.dropTable,
+  ];
+}
+
 export function summarizeRewards(rewards: RewardStack[]): RewardStack[] {
   const map = new Map<string, RewardStack>();
   for (const reward of rewards) {
@@ -52,8 +68,7 @@ export function rollRewards(input: {
         rewards.push({ itemId: entry.itemId, kind: entry.kind, quantity: entry.quantity });
       }
     }
-    rewards.push({ itemId: 'ember-chip', kind: 'material', quantity: 1 });
-    if (input.quest.difficulty >= 2) rewards.push({ itemId: 'furnace-core', kind: 'material', quantity: 1 });
+    rewards.push(...getStandardQuestDrops(input.quest));
   }
   return summarizeRewards(rewards);
 }

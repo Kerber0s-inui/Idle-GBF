@@ -1,4 +1,5 @@
 import type { RewardStack } from '../../domain/rewards';
+import { getRewardLabel } from '../../domain/itemData';
 
 type RewardSummaryProps = {
   rewards: RewardStack[];
@@ -13,7 +14,7 @@ export function RewardSummary({ rewards }: RewardSummaryProps) {
     <ul className="reward-list">
       {rewards.map((reward) => (
         <li key={`${reward.kind}-${reward.itemId}`}>
-          <span>{reward.itemId}</span>
+          <span>{getRewardLabel(reward)}</span>
           <strong>x{reward.quantity}</strong>
         </li>
       ))}

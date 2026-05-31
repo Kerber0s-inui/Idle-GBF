@@ -32,10 +32,10 @@ describe('initial content', () => {
   it('contains farmable fire grid weapons and one wind enemy route', () => {
     expect(initialWeapons).toHaveLength(2);
     expect(initialSummons).toHaveLength(2);
-    expect(initialEnemies).toHaveLength(3);
-    expect(initialQuests.filter((quest) => quest.kind === 'main')).toHaveLength(3);
-    expect(initialQuests.some((quest) => quest.kind === 'boss')).toBe(true);
-    expect(initialQuests.some((quest) => quest.kind === 'material')).toBe(true);
+    expect(initialEnemies).toHaveLength(9);
+    expect(initialQuests.filter((quest) => quest.kind === 'main')).toHaveLength(9);
+    expect(initialQuests.filter((quest) => quest.kind === 'boss')).toHaveLength(5);
+    expect(initialQuests.filter((quest) => quest.kind === 'material')).toHaveLength(5);
     expect(initialWeapons.some((weapon) => weapon.source === 'farmable')).toBe(true);
     expect(initialSummons.some((summon) => summon.aura.target === 'magna')).toBe(true);
     expect(initialEnemies.every((enemy) => enemy.element === 'wind')).toBe(true);

@@ -10,7 +10,7 @@ const loadout: PartyLoadout = {
     weaponIds: initialWeapons.map((weapon) => weapon.id),
   },
   mainSummonId: initialSummons[0].id,
-  supportSummonId: initialSummons[1].id,
+  summonIds: initialSummons.map((summon) => summon.id),
 };
 
 function makeBoss(overrides: Partial<Enemy> = {}): Enemy {
@@ -68,7 +68,26 @@ describe('stage 2 battle simulation', () => {
       characters: initialCharacters,
       weapons: initialWeapons,
       summons: initialSummons,
-      enemy: makeBoss({ stats: { hp: 45_000, atk: 900, defense: 100 }, chargeMax: 1 }),
+      enemy: makeBoss({
+        stats: { hp: 45_000, atk: 900, defense: 100 },
+        chargeMax: 1,
+        specialActions: [
+          {
+            id: 'hp-95',
+            name: '裂风阈震',
+            trigger: { kind: 'hpThreshold', threshold: 0.95 },
+            target: { kind: 'all' },
+            damageMultiplier: 1.2,
+          },
+          {
+            id: 'charge-full',
+            name: '满豆风压',
+            trigger: { kind: 'chargeFull' },
+            target: { kind: 'single' },
+            damageMultiplier: 1,
+          },
+        ],
+      }),
       loadout,
       random: () => 0,
     });

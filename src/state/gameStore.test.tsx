@@ -255,6 +255,23 @@ describe('game store', () => {
     expect(result.current.save.formation.characterIds[3]).toBe('char-leya-ember-rail');
   });
 
+  it('switches active element teams without overwriting another element team', () => {
+    const wrapper = ({ children }: { children: ReactNode }) => <GameProvider now={() => 1000}>{children}</GameProvider>;
+    const { result } = renderHook(() => useGame(), { wrapper });
+
+    act(() => result.current.setCharacterSlot(0, 'char-noin-ash-protocol'));
+    act(() => result.current.setFormationElement('water'));
+
+    expect(result.current.save.formation.activeElement).toBe('water');
+    expect(result.current.save.formation.characterIds[0]).toBe('char-leya-ember-rail');
+
+    act(() => result.current.setCharacterSlot(0, 'char-caro-furnace'));
+    act(() => result.current.setFormationElement('fire'));
+
+    expect(result.current.save.formation.characterIds[0]).toBe('char-noin-ash-protocol');
+    expect(result.current.save.formation.teams.water.characterIds[0]).toBe('char-caro-furnace');
+  });
+
   it('updates weapon and summon formation slots', () => {
     const wrapper = ({ children }: { children: ReactNode }) => <GameProvider now={() => 1000}>{children}</GameProvider>;
     const { result } = renderHook(() => useGame(), { wrapper });

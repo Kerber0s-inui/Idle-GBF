@@ -111,6 +111,7 @@ export type Character = {
   assetKey: string;
   assetMode?: AssetMode;
   passives: [Passive, Passive];
+  bondTags?: string[];
   progression?: Partial<CharacterProgressionRule>;
   chargeAttack: ChargeAttack;
 };
@@ -208,5 +209,6 @@ export type PartyLoadout = {
   characterIds: string[];
   weaponGrid: WeaponGrid;
   mainSummonId: string;
+  summonIds?: string[];
   supportSummonId?: string;
 };

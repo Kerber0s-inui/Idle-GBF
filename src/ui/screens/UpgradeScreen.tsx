@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { initialCharacters, initialSummons, initialWeapons } from '../../domain/content';
 import {
   getCharacterUncapOptions,
@@ -26,6 +26,7 @@ import {
   applyCharacterProgression,
   applySummonProgression,
   applyWeaponProgression,
+  getUnlockedCharacterPassives,
   getUncapProgressVisual,
 } from '../../domain/progression';
 import { useGame } from '../../state/gameStore';
@@ -51,14 +52,29 @@ type GridItem = {
   name: string;
   level: number;
   levelCap: number;
+  atk?: number;
+  hp?: number;
+  defense?: number;
+  comboRate?: number;
   skillLevel?: number;
-  skillName?: string;
-  skillEffect?: string;
+  skillLines?: string[];
   uncap: number;
   equipped: boolean;
 };
 
-const PAGE_SIZE = 16;
+type StatPreviewRow = {
+  label: string;
+  current: number;
+  next: number;
+};
+
+type TextPreviewRow = {
+  label: string;
+  current: string;
+  next: string;
+};
+
+const PAGE_SIZE = 12;
 const PICKER_ITEM_HEIGHT = 56;
 const PICKER_VISIBLE_ROWS = 5;
 const PICKER_VIEWPORT_HEIGHT = PICKER_ITEM_HEIGHT * PICKER_VISIBLE_ROWS;
@@ -68,9 +84,40 @@ function isDismantlePreview(result: GrowthPreviewResult | DismantlePreviewResult
   return Boolean(result && 'rewards' in result);
 }
 
-function getWeaponSkillText(item: GridItem) {
-  if (!item.skillLevel || !item.skillName || !item.skillEffect) return null;
-  return `${item.skillName} / SLv.${item.skillLevel} / ${item.skillEffect}`;
+function getWeaponSkillLines(item: GridItem) {
+  const lines = item.skillLines ?? [];
+  return [lines[0] ?? '\u00A0', lines[1] ?? '\u00A0'];
+}
+
+function formatRatePercent(value: number) {
+  const percentValue = value * 100;
+  return Number.isInteger(percentValue) ? `${percentValue}%` : `${percentValue.toFixed(1)}%`;
+}
+
+function buildStatPreviewRows(preview: GrowthPreviewResult | null): StatPreviewRow[] {
+  if (!preview) return [];
+  const pairs: Array<{ label: string; current?: number; next?: number }> = [
+    { label: '攻', current: preview.current.atk, next: preview.next.atk },
+    { label: '防', current: preview.current.defense, next: preview.next.defense },
+    { label: 'HP', current: preview.current.hp, next: preview.next.hp },
+  ];
+
+  return pairs
+    .filter((pair) => pair.current !== undefined || pair.next !== undefined)
+    .map((pair) => ({ label: pair.label, current: pair.current ?? 0, next: pair.next ?? 0 }));
+}
+
+function buildSkillPreviewRows(preview: GrowthPreviewResult | null): TextPreviewRow[] {
+  if (!preview) return [];
+  const currentLines = preview.current.skillLines ?? [];
+  const nextLines = preview.next.skillLines ?? [];
+  const maxLength = Math.max(currentLines.length, nextLines.length, 2);
+
+  return Array.from({ length: maxLength }, (_, index) => ({
+    label: `词条${index + 1}`,
+    current: currentLines[index] ?? '—',
+    next: nextLines[index] ?? '—',
+  })).filter((row) => row.current !== '—' || row.next !== '—');
 }
 
 function getActionLabel(action: GrowthActionKind) {
@@ -104,7 +151,7 @@ function scrollPickerViewport(element: HTMLDivElement | null, top: number, behav
   element.scrollTop = top;
 }
 
-function renderStars(item: GridItem, canTranscend: boolean) {
+function renderStars(item: GridItem, canTranscend: boolean, emphasis: 'default' | 'large' = 'default') {
   const visual = getUncapProgressVisual({
     uncap: item.uncap,
     rule: {
@@ -115,15 +162,19 @@ function renderStars(item: GridItem, canTranscend: boolean) {
   });
 
   return (
-    <div className="upgrade-stars" aria-label={`突破 ${item.uncap}`}>
-      {Array.from({ length: visual.mainStars }, (_, index) => (
-        <span
-          className={index < visual.filledMainStars ? `upgrade-star ${index === visual.mainStars - 1 ? 'upgrade-star-final' : 'upgrade-star-filled'}` : 'upgrade-star'}
-          key={`${item.id}-star-${index}`}
-        >
-          ★
-        </span>
-      ))}
+    <div className={emphasis === 'large' ? 'upgrade-stars upgrade-stars-large' : 'upgrade-stars'} aria-label={`突破 ${item.uncap}`}>
+      {Array.from({ length: visual.mainStars }, (_, index) => {
+        const filled = index < visual.filledMainStars;
+        const className = filled
+          ? `upgrade-star ${index === visual.mainStars - 1 ? 'upgrade-star-final' : 'upgrade-star-filled'}`
+          : 'upgrade-star';
+
+        return (
+          <span className={className} key={`${item.id}-star-${index}`}>
+            {filled ? '★' : '☆'}
+          </span>
+        );
+      })}
       {visual.hasTranscendenceStar ? (
         <span className={visual.transcendenceFill > 0 ? 'upgrade-star upgrade-star-transcend' : 'upgrade-star'}>
           {visual.transcendenceFill > 0 ? `★${Math.round(visual.transcendenceFill * 5)}/5` : '☆'}
@@ -159,24 +210,74 @@ function getOperationPreview(save: ReturnType<typeof useGame>['save'], operation
   }
 }
 
-function buildCompactSummary(preview: GrowthPreviewResult, action: GrowthActionKind) {
-  const currentLevelText = `Lv.${preview.current.level ?? 1}`;
-  const nextLevelText = `Lv.${preview.next.level ?? preview.current.level ?? 1}`;
-  const currentSkillText = `SLv.${preview.current.skillLevel ?? 1}`;
-  const nextSkillText = `SLv.${preview.next.skillLevel ?? preview.current.skillLevel ?? 1}`;
-  const currentUncapText = `阶段${preview.current.uncap ?? 0}`;
-  const nextUncapText = `阶段${preview.next.uncap ?? preview.current.uncap ?? 0}`;
+function itemStarEmphasis(_tab: UpgradeTab): 'default' | 'large' {
+  return 'large';
+}
 
+function canItemTranscend(tab: UpgradeTab, item: GridItem) {
+  if (tab === 'character') return item.levelCap > 100 || item.uncap > 3;
+  return item.levelCap > 100 || item.uncap > 3;
+}
+
+function renderCardMeta(tab: UpgradeTab, item: GridItem) {
+  if (tab === 'character') {
+    return (
+      <>
+        <span>{`Lv.${item.level}/${item.levelCap}`}</span>
+        <small className="upgrade-card-stat-row">
+          <span className="upgrade-card-stat-entry">{`攻 ${item.atk ?? 0}`}</span>
+          <span className="upgrade-card-stat-entry">{`防 ${item.defense ?? 0}`}</span>
+        </small>
+        <small className="upgrade-card-stat-row">
+          <span className="upgrade-card-stat-entry">{`HP ${item.hp ?? 0}`}</span>
+          <span className="upgrade-card-stat-entry">{`连 ${formatRatePercent(item.comboRate ?? 0)}`}</span>
+        </small>
+      </>
+    );
+  }
+
+  if (item.skillLevel) {
+    return (
+      <>
+        <span>{`Lv.${item.level}/${item.levelCap}  SLv.${item.skillLevel}`}</span>
+        {getWeaponSkillLines(item).map((line, index) => (
+          <small
+            className={line === '\u00A0' ? 'upgrade-card-skill-line upgrade-card-skill-line-empty' : 'upgrade-card-skill-line'}
+            key={`${item.id}-skill-line-${index}`}
+          >
+            {line}
+          </small>
+        ))}
+      </>
+    );
+  }
+
+  return (
+    <>
+      <span>{`Lv.${item.level}/${item.levelCap}`}</span>
+      <small className="upgrade-card-stat-row">
+        <span className="upgrade-card-stat-entry">{`攻 ${item.atk ?? 0}`}</span>
+        <span className="upgrade-card-stat-entry">{`防 ${item.defense ?? 0}`}</span>
+      </small>
+      <small className="upgrade-card-stat-row">
+        <span className="upgrade-card-stat-entry">{`HP ${item.hp ?? 0}`}</span>
+        <span className="upgrade-card-stat-entry">{'\u00A0'}</span>
+      </small>
+    </>
+  );
+}
+
+function buildCompactSummary(preview: GrowthPreviewResult, action: GrowthActionKind) {
   if (action === 'characterUpgrade' || action === 'weaponUpgrade' || action === 'summonUpgrade') {
-    return [{ label: '等级', value: `${currentLevelText} -> ${nextLevelText}` }, ...preview.costs.map((cost) => ({ label: cost.label, value: `${cost.quantity}` }))];
+    return preview.costs.map((cost) => ({ label: cost.label, value: `${cost.quantity}` }));
   }
 
   if (action === 'weaponSkillUpgrade') {
-    return [{ label: '词条等级', value: `${currentSkillText} -> ${nextSkillText}` }, ...preview.costs.map((cost) => ({ label: cost.label, value: `${cost.quantity}` }))];
+    return preview.costs.map((cost) => ({ label: cost.label, value: `${cost.quantity}` }));
   }
 
   if (action === 'characterUncap' || action === 'weaponUncap' || action === 'summonUncap') {
-    return [{ label: '阶段', value: `${currentUncapText} -> ${nextUncapText}` }, ...preview.costs.map((cost) => ({ label: cost.label, value: `${cost.quantity}` }))];
+    return [{ label: '等级上限', value: `${preview.current.levelCap ?? 0} -> ${preview.next.levelCap ?? preview.current.levelCap ?? 0}` }, ...preview.costs.map((cost) => ({ label: cost.label, value: `${cost.quantity}` }))];
   }
 
   return preview.costs.map((cost) => ({ label: cost.label, value: `${cost.quantity}` }));
@@ -209,11 +310,20 @@ export function UpgradeScreen() {
         const character = initialCharacters.find((candidate) => candidate.id === id);
         const progressed = character ? applyCharacterProgression(character, save.characterStates[id]) : null;
         const state = save.characterStates[id];
+        const comboRate = progressed
+          ? getUnlockedCharacterPassives(progressed, state)
+              .flatMap((passive) => passive.modifiers)
+              .reduce((total, modifier) => total + (modifier.type === 'doubleAttackRate' ? modifier.value : 0), 0)
+          : 0;
         return {
           id,
           name: progressed?.name ?? id,
           level: state?.level ?? progressed?.level ?? 1,
           levelCap: state?.levelCap ?? progressed?.maxLevel ?? 40,
+          atk: progressed?.stats.atk,
+          hp: progressed?.stats.hp,
+          defense: progressed?.stats.defense,
+          comboRate,
           uncap: state?.uncap ?? 0,
           equipped: save.formation.characterIds.includes(id),
         };
@@ -232,9 +342,11 @@ export function UpgradeScreen() {
           name: progressed?.name ?? id,
           level: state?.level ?? progressed?.level ?? 1,
           levelCap: state?.levelCap ?? progressed?.maxLevel ?? 40,
+          atk: progressed?.stats.atk,
+          hp: progressed?.stats.hp,
+          defense: progressed?.stats.defense,
           skillLevel: state?.skillLevel ?? progressed?.skills[0]?.level ?? 1,
-          skillName: progressed?.skills[0]?.name,
-          skillEffect: progressed?.skills[0]?.modifiers.map((modifier) => modifier.label).join(' / '),
+          skillLines: progressed?.skills.slice(0, 2).map((skill) => skill.modifiers.map((modifier) => modifier.label).join(' / ')) ?? [],
           uncap: state?.uncap ?? 0,
           equipped: save.formation.weaponIds.includes(id),
         };
@@ -253,6 +365,9 @@ export function UpgradeScreen() {
           name: progressed?.name ?? id,
           level: state?.level ?? progressed?.level ?? 1,
           levelCap: state?.levelCap ?? progressed?.maxLevel ?? 40,
+          atk: progressed?.stats.atk,
+          hp: progressed?.stats.hp,
+          defense: progressed?.stats.defense,
           uncap: state?.uncap ?? 0,
           equipped: save.formation.summonIds.includes(id),
         };
@@ -387,6 +502,24 @@ export function UpgradeScreen() {
     currentPreview?.result && !isDismantlePreview(currentPreview.result) && operationState && !('dismantle' in operationState)
       ? buildCompactSummary(currentPreview.result, operationState.definition.action)
       : [];
+  const statPreviewRows =
+    currentPreview?.result &&
+    !isDismantlePreview(currentPreview.result) &&
+    operationState &&
+    !('dismantle' in operationState) &&
+    (operationState.definition.action === 'characterUpgrade' ||
+      operationState.definition.action === 'weaponUpgrade' ||
+      operationState.definition.action === 'summonUpgrade')
+      ? buildStatPreviewRows(currentPreview.result)
+      : [];
+  const skillPreviewRows =
+    currentPreview?.result &&
+    !isDismantlePreview(currentPreview.result) &&
+    operationState &&
+    !('dismantle' in operationState) &&
+    operationState.definition.action === 'weaponSkillUpgrade'
+      ? buildSkillPreviewRows(currentPreview.result)
+      : [];
 
   return (
     <>
@@ -424,19 +557,21 @@ export function UpgradeScreen() {
 
         <div className="upgrade-grid" data-testid={`${tab}-grid`}>
           {visibleItems.map((item) => (
-            <button className="upgrade-card" data-testid={`${tab}-card-${item.id}`} key={item.id} type="button" onClick={() => openActionModal(tab, item.id)}>
+            <button
+              className={tab === 'character' ? 'upgrade-card upgrade-card-character' : 'upgrade-card'}
+              data-testid={`${tab}-card-${item.id}`}
+              key={item.id}
+              type="button"
+              onClick={() => openActionModal(tab, item.id)}
+            >
               {item.equipped ? <span className="upgrade-equipped-badge">编成中</span> : null}
               <div className="upgrade-card-icon">
                 <IconBadge label={item.name} />
               </div>
               <div className="upgrade-card-body">
                 <strong>{item.name}</strong>
-                <span>
-                  Lv.{item.level}/{item.levelCap}
-                </span>
-                {item.skillLevel ? <span>SLv.{item.skillLevel}</span> : null}
-                {item.skillName ? <small>{getWeaponSkillText(item)}</small> : <small>突破 {item.uncap}</small>}
-                {renderStars(item, false)}
+                <div className="upgrade-card-meta">{renderCardMeta(tab, item)}</div>
+                {renderStars(item, canItemTranscend(tab, item), itemStarEmphasis(tab))}
               </div>
             </button>
           ))}
@@ -468,7 +603,7 @@ export function UpgradeScreen() {
                   Lv.{currentActionItem.level}/{currentActionItem.levelCap}
                   {currentActionItem.skillLevel ? ` / SLv.${currentActionItem.skillLevel}` : ''}
                 </span>
-                {renderStars(currentActionItem, false)}
+                {renderStars(currentActionItem, canItemTranscend(actionState.tab, currentActionItem), itemStarEmphasis(actionState.tab))}
               </div>
             </div>
             <div className="upgrade-action-buttons">
@@ -537,7 +672,7 @@ export function UpgradeScreen() {
                         {
                           '--upgrade-picker-item-height': `${PICKER_ITEM_HEIGHT}px`,
                           '--upgrade-picker-viewport-height': `${PICKER_VIEWPORT_HEIGHT}px`,
-                        } as React.CSSProperties
+                        } as CSSProperties
                       }
                     >
                       <div className="upgrade-wheel-highlight" />
@@ -578,7 +713,11 @@ export function UpgradeScreen() {
                       const shouldPrefixCost =
                         operationState &&
                         !('dismantle' in operationState) &&
-                        index > 0;
+                        (operationState.definition.action === 'characterUpgrade' ||
+                          operationState.definition.action === 'weaponUpgrade' ||
+                          operationState.definition.action === 'summonUpgrade'
+                          ? true
+                          : index > 0);
 
                       return (
                         <div className="stat-row" key={`${row.label}-${row.value}`}>
@@ -587,6 +726,19 @@ export function UpgradeScreen() {
                         </div>
                       );
                     })}
+                    {statPreviewRows.length > 0 || skillPreviewRows.length > 0 ? <div className="upgrade-preview-divider" /> : null}
+                    {statPreviewRows.map((row) => (
+                      <div className="stat-row" key={`stat-preview-${row.label}`}>
+                        <span>{row.label}</span>
+                        <strong>{`${row.current} -> ${row.next}`}</strong>
+                      </div>
+                    ))}
+                    {skillPreviewRows.map((row) => (
+                      <div className="stat-row upgrade-skill-preview-row" key={`skill-preview-${row.label}`}>
+                        <span>{row.label}</span>
+                        <strong>{`${row.current} -> ${row.next}`}</strong>
+                      </div>
+                    ))}
                   </div>
                 </>
               )}
